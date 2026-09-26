@@ -6,7 +6,7 @@ Make your Steam Machine's 17-pixel light bar useful and a little more
 expressive. Choose a persistent display, then let playtime warnings and short
 Steam moments take the stage before your display returns.
 
-[Download SignalBar v0.7.0](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.0)
+[Download SignalBar v0.7.1](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.1)
 
 [Try the interactive SignalBar preview before installing](https://albusquerque.github.io/signalbar-concept/)
 
@@ -41,17 +41,23 @@ as if they were live.
 
 ![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](assets/readme-gifs/performance.gif)
 
-### Light Events only
+### Signals only
 
 Use SignalBar for short Steam notifications, achievements, screenshots, and
-recording start/stop animations without keeping Artwork or Performance on the
-bar. Between events, Steam or another light-bar application retains control.
+recording start/stop animations without keeping Artwork, Performance, or
+Weather on the bar. Playtime countdowns, controller alerts, and any enabled
+battery or charging status remain active. When none of those signals needs the
+bar, Steam or another light-bar application retains control.
 This directly answers the request in
 [issue #1](https://github.com/Albusquerque/SignalBar/issues/1).
 
-With a compatible StripMine build, SignalBar announces each short takeover,
-StripMine yields automatically, and mining resumes on the LEDs after SignalBar
-restores the exact pre-event frame. No manual **Retry bar** action is required.
+With StripMine v0.1.1-alpha.7 or newer, open **Settings → Compatibility** to
+choose which plugin owns the bar for Artwork, Performance, Weather, Controller
+displays and Light Events while the mine is active. SignalBar and StripMine
+acknowledge every transfer before writing, then restore the previous owner
+automatically. No manual **Retry bar** action is required. Playtime countdowns
+remain SignalBar priorities; unknown applications still trigger the normal
+ownership guard.
 
 ### Playtime Countdown
 
@@ -159,8 +165,8 @@ SignalBar follows a strict order:
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Download `SignalBar-v0.7.0.zip` from the
-   [v0.7.0 release](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.0).
+2. Download `SignalBar-v0.7.1.zip` from the
+   [v0.7.1 release](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.1).
    Do not extract it.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
@@ -179,7 +185,7 @@ light bar through root-owned `valve-leds` sysfs files.
 ## First setup
 
 1. Open SignalBar in Decky's quick-access menu.
-2. Choose **Artwork**, **Performance**, **Light Events only**, or **Disabled**.
+2. Choose **Artwork**, **Performance**, **Signals only**, or **Disabled**.
 3. Open **Detailed settings** for Artwork, Performance, Playtime, Light events,
    Controllers, Weather, and Advanced options.
 4. Use Preview to compare animations before changing your live settings.
@@ -310,7 +316,7 @@ npm run build
 npm run package
 ```
 
-The installable archive is written to `out/SignalBar-v0.7.0.zip`.
+The installable archive is written to `out/SignalBar-v0.7.1.zip`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
 hardware-rendering details. Release history is available in

@@ -12,7 +12,7 @@ import time
 from signalbar import __version__
 from signalbar.arbiter import Arbiter, VanillaGuard
 from signalbar.hardware import ValveLedHardware
-from signalbar.integration import LightEventLease
+from signalbar.integration import LightEventLease, StripMineClaimReader
 from signalbar.models import GameState
 from signalbar.providers import ArtworkProvider, CountdownProvider, EventProvider, IdleProvider, PerformanceProvider
 from signalbar.providers.controller import ControllerProvider
@@ -22,11 +22,12 @@ from signalbar.renderer import Renderer
 
 class Engine:
     def __init__(self, settings, cache_path, logger=None, hardware_factory=ValveLedHardware,
-                 event_lease=None):
+                 event_lease=None, stripmine_claim=None):
         self.settings = settings
         self.log = logger
         self.hardware_factory = hardware_factory
         self.event_lease = event_lease or LightEventLease()
+        self.stripmine_claim = stripmine_claim or StripMineClaimReader()
         self._light_event_announced_at = 0.0
         self.artwork = ArtworkProvider(cache_path)
         self.countdown = CountdownProvider()
@@ -96,6 +97,7 @@ class Engine:
             if self._renderer:
                 self._renderer.relinquish(restore_if_owned=True)
             self.event_lease.release()
+            self.stripmine_claim.release()
             self._light_event_announced_at = 0.0
             self._owner = "Valve"
             self._decision = "none"
@@ -378,7 +380,7 @@ class Engine:
             ):
                 if key in changes and not values[key]:
                     self.events.cancel_kinds(kinds)
-        if values["mode"] in {"disabled", "events"}:
+        if values["mode"] == "disabled":
             self.controllers.clear_transients()
         if "parental_countdown_enabled" in changes and not values["parental_countdown_enabled"]:
             # Turning the feature off is an immediate cancellation, not only
@@ -397,6 +399,30 @@ class Engine:
             if self._guard:
                 self._guard.cooldown_s = values["guard_cooldown_s"]
                 self._guard.stable_s = values["guard_stable_s"]
+
+    @staticmethod
+    def _stripmine_family(provider):
+        if provider.startswith("artwork"):
+            return "artwork"
+        if provider.startswith("performance"):
+            return "performance"
+        if provider.startswith("weather"):
+            return "weather"
+        if provider.startswith("controller"):
+            return "controller"
+        if provider.startswith("event:"):
+            return "light_events"
+        return "system"
+
+    @classmethod
+    def _stripmine_priority(cls, provider, values):
+        if provider in {"none", "valve", "idle"}:
+            return "stripmine"
+        family = cls._stripmine_family(provider)
+        if family == "system":
+            # Countdowns and unknown safety providers keep SignalBar priority.
+            return "signalbar"
+        return values.get(f"stripmine_priority_{family}", "stripmine")
 
     def _run(self):
         hardware = None
@@ -462,6 +488,10 @@ class Engine:
                     explicit_active=explicit,
                     explicit_reason=explicit_reason,
                 )
+                stripmine_active = (
+                    values["stripmine_integration_enabled"]
+                    and self.stripmine_claim.active()
+                )
                 performance = self.performance.output(
                     metric=values["performance_metric"],
                     cool_c=values["cool_temp_c"],
@@ -507,7 +537,7 @@ class Engine:
                 # the conservative 10 Hz cadence.
                 interval = 0.06 if event.frame is not None or controller_event.frame is not None else 0.10
                 decision = self.arbiter.choose(
-                    mode=values["mode"], guard_allows=allowed, game=game,
+                    mode=values["mode"], guard_allows=allowed or stripmine_active, game=game,
                     performance=performance, artwork=artwork, idle=self.idle.output(),
                     signal=signal, event=event, signal_critical=signal_critical,
                     controller_event=controller_event, controller_base=controller_base,
@@ -520,21 +550,44 @@ class Engine:
                     performance_always=values["performance_always"],
                 )
 
+                stripmine_priority = self._stripmine_priority(decision.provider, values)
+                yield_to_stripmine = stripmine_active and stripmine_priority == "stripmine"
+                take_from_stripmine = stripmine_active and stripmine_priority == "signalbar"
+                if stripmine_active and not yield_to_stripmine:
+                    self.stripmine_claim.acknowledge(stripmine_priority, decision.provider)
+
                 is_light_event = decision.provider.startswith("event:")
-                if is_light_event:
+                needs_handoff = (is_light_event and not yield_to_stripmine) or take_from_stripmine
+                if needs_handoff:
                     # Publish before the first LED write so StripMine can yield
                     # without treating this short, intentional takeover as a conflict.
-                    self.event_lease.refresh(decision.provider)
+                    self.event_lease.refresh(
+                        decision.provider,
+                        "light-event" if is_light_event else "priority-output",
+                    )
                     if not self._light_event_announced_at:
                         self._light_event_announced_at = now
                     handoff_ready = (
                         self.event_lease.acknowledged()
-                        or now - self._light_event_announced_at >= 0.10
+                        or is_light_event and now - self._light_event_announced_at >= 0.10
                     )
                 else:
                     self._light_event_announced_at = 0.0
                     handoff_ready = True
-                if is_light_event and not handoff_ready:
+                if yield_to_stripmine:
+                    if renderer.last_frame is not None:
+                        renderer.relinquish(restore_if_owned=True)
+                    # Grant StripMine ownership only after every possible
+                    # restore write has completed. On the physical 17-LED
+                    # sysfs device a restore is sequential; acknowledging
+                    # first lets StripMine resume in the middle of it and
+                    # misclassify our remaining writes as a third-party app.
+                    self.stripmine_claim.acknowledge(stripmine_priority, decision.provider)
+                    event_was_active = False
+                    event_preempted_valve = False
+                    owner = "Valve"
+                    suspension = f"StripMine priority over {self._stripmine_family(decision.provider)}"
+                elif needs_handoff and not handoff_ready:
                     # Keep the current frame untouched until StripMine confirms
                     # it has stopped writing. A short timeout preserves normal
                     # events when no compatible companion is installed.
@@ -567,7 +620,7 @@ class Engine:
                     event_preempted_valve = False
                     owner = "Valve"
                     suspension = guard.reason if externally_blocked else decision.reason
-                if not is_light_event:
+                if not needs_handoff or yield_to_stripmine:
                     # Relinquish/restore happens above; only then tell StripMine
                     # that it may safely reclaim its continuously animated bar.
                     self.event_lease.release()
@@ -578,8 +631,10 @@ class Engine:
                     # truthful in diagnostics, this prevents callers from
                     # racing a native write against SignalBar's first frame.
                     self._decision = (
-                        "event:handoff"
-                        if is_light_event and not handoff_ready
+                        "companion:handoff"
+                        if needs_handoff and not handoff_ready
+                        else "companion:stripmine"
+                        if yield_to_stripmine
                         else decision.provider
                     )
                     self._owner = owner
@@ -588,6 +643,7 @@ class Engine:
             except Exception as error:
                 renderer.relinquish(restore_if_owned=False)
                 self.event_lease.release()
+                self.stripmine_claim.release()
                 self._light_event_announced_at = 0.0
                 with self._lock:
                     self._owner = "Valve"
@@ -599,10 +655,15 @@ class Engine:
 
         if renderer is not None:
             renderer.relinquish(restore_if_owned=True)
+        self.stripmine_claim.release()
 
     def status(self):
         values = self.settings.all()
         now = time.monotonic()
+        stripmine_detected = (
+            values["stripmine_integration_enabled"]
+            and self.stripmine_claim.active()
+        )
         sample = self.performance.sample
         art = self.artwork.status()
         with self._lock:
@@ -732,6 +793,13 @@ class Engine:
                 "weather_temperature_unit": values["weather_temperature_unit"],
                 "weather_brightness": values["weather_brightness"],
                 "weather_shadow_cutoff": values["weather_shadow_cutoff"],
+                "stripmine_integration_enabled": values["stripmine_integration_enabled"],
+                "stripmine_detected": stripmine_detected,
+                "stripmine_priority_artwork": values["stripmine_priority_artwork"],
+                "stripmine_priority_performance": values["stripmine_priority_performance"],
+                "stripmine_priority_weather": values["stripmine_priority_weather"],
+                "stripmine_priority_controller": values["stripmine_priority_controller"],
+                "stripmine_priority_light_events": values["stripmine_priority_light_events"],
                 **{key: values[key] for key in values if key.startswith("weather_") and key.endswith("_variant")},
                 "weather": weather_status,
                 "controllers": controller_status,

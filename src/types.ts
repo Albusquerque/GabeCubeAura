@@ -7,6 +7,7 @@ export type MixedDirection = "same" | "mirrored";
 export type TemperaturePalette = "thermal" | "classic" | "icefire" | "custom";
 export type CountdownColour = "cyan" | "green" | "amber" | "violet" | "white";
 export type RGB = [number, number, number];
+export type CompanionPriority = "stripmine" | "signalbar";
 export type WeatherCondition = "clear_day" | "clear_night" | "rain" | "cloud" | "breaks" | "breaks_night" | "snow" | "storm";
 export interface WeatherLocation { name: string; country: string; latitude: number; longitude: number }
 
@@ -78,6 +79,13 @@ export interface Status {
   weather_temperature_unit: "celsius" | "fahrenheit";
   weather_brightness: number;
   weather_shadow_cutoff: number;
+  stripmine_integration_enabled: boolean;
+  stripmine_detected: boolean;
+  stripmine_priority_artwork: CompanionPriority;
+  stripmine_priority_performance: CompanionPriority;
+  stripmine_priority_weather: CompanionPriority;
+  stripmine_priority_controller: CompanionPriority;
+  stripmine_priority_light_events: CompanionPriority;
   weather_clear_day_variant: number;
   weather_clear_night_variant: number;
   weather_rain_variant: number;

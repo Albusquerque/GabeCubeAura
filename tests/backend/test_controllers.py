@@ -325,6 +325,44 @@ class ControllerTests(unittest.TestCase):
                          "countdown")
         self.assertEqual(arbiter.choose(**{**kwargs, "mode": "disabled"}).provider, "none")
 
+    def test_signals_only_keeps_controller_status_and_alerts_without_ambient_base(self):
+        clock = Clock()
+        provider = ControllerProvider(clock=clock)
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values["mode"] = "events"
+        values["controller_battery_display"] = "everywhere"
+        provider.update([], values)
+        provider.update([controller(74)], values)
+        gauge = provider.persistent_output(values, False)
+        alert = provider.event_output()
+        ambient = ProviderOutput("artwork", normalize_frame([(10, 20, 30)] * 17), "")
+        weather = ProviderOutput("weather", normalize_frame([(4, 5, 6)] * 17), "")
+        empty = ProviderOutput("none", None, "")
+        kwargs = dict(mode="events", guard_allows=True, game=GameState(),
+                      performance=ambient, artwork=ambient, idle=ambient,
+                      signal=empty, event=empty, weather_base=weather,
+                      controller_base=gauge)
+        self.assertEqual(Arbiter().choose(**{**kwargs, "controller_event": alert}).provider,
+                         "controller:connect")
+        provider.clear_transients()
+        self.assertEqual(Arbiter().choose(
+            **{**kwargs, "controller_event": provider.event_output()}).provider,
+            "controller-battery")
+        self.assertEqual(Arbiter().choose(
+            **{**kwargs, "controller_event": provider.event_output(), "controller_base": empty}).provider,
+            "none")
+
+    def test_signals_only_accepts_controller_alerts_and_disabled_cancels_them(self):
+        with tempfile.TemporaryDirectory() as folder:
+            settings = SettingsStore(str(Path(folder) / "settings.json"))
+            engine = Engine(settings, str(Path(folder) / "artwork.json"))
+            engine.update_settings({"mode": "events"})
+            engine.update_controllers([], "baseline")
+            engine.update_controllers([controller(74)], "connected")
+            self.assertTrue(engine.status()["controllers"]["active"])
+            engine.update_settings({"mode": "disabled"})
+            self.assertFalse(engine.status()["controllers"]["active"])
+
     def test_two_controller_gauge_has_dark_centre_and_unknown_is_not_fake_percent(self):
         clock = Clock()
         provider = ControllerProvider(clock=clock)

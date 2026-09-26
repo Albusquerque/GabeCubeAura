@@ -45,12 +45,12 @@ import { startSignalBarRuntime } from "./runtime";
 import { buildSettingsSnapshot } from "./settings_snapshot";
 import { WEATHER_CONDITIONS, WEATHER_VARIANTS } from "./weather_variants";
 import { startWeatherTopBar } from "./weather_topbar";
-import type { ArtworkPayload, ArtworkSource, Status, WeatherCondition, WeatherLocation } from "./types";
+import type { ArtworkPayload, ArtworkSource, CompanionPriority, Status, WeatherCondition, WeatherLocation } from "./types";
 
 const MODE_OPTIONS = [
   { data: "artwork", label: "Artwork" },
   { data: "performance", label: "Performance" },
-  { data: "events", label: "Light Events only" },
+  { data: "events", label: "Signals only" },
   { data: "disabled", label: "Disabled" },
 ];
 
@@ -116,6 +116,10 @@ const WEATHER_DISPLAY_OPTIONS = CONTROLLER_DISPLAY_OPTIONS;
 const WEATHER_TEMPERATURE_UNITS = [
   { data: "celsius", label: "Celsius (°C)" },
   { data: "fahrenheit", label: "Fahrenheit (°F)" },
+];
+const COMPANION_PRIORITY_OPTIONS = [
+  { data: "stripmine", label: "StripMine while the game is active" },
+  { data: "signalbar", label: "SignalBar" },
 ];
 const CONTROLLER_ALERT_OPTIONS = [
   { data: "off", label: "Off" },
@@ -693,7 +697,55 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
   </>;
 }
 
-type Page = "quick" | "artwork" | "performance" | "countdown" | "events" | "controllers" | "weather" | "advanced";
+function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
+  const priorities = ([
+    ["Artwork", "stripmine_priority_artwork", "The sampled game artwork display."],
+    ["Performance", "stripmine_priority_performance", "CPU, GPU and mixed performance displays."],
+    ["Weather", "stripmine_priority_weather", "Permanent and preview weather animations."],
+    ["Controller displays", "stripmine_priority_controller", "Battery gauges, connection and charging displays."],
+    ["Light Events", "stripmine_priority_light_events", "Notifications, achievements, screenshots and recording cues."],
+  ] as const);
+  return <>
+    <PanelSection title="StripMine compatibility">
+      <PanelSectionRow>
+        <ToggleField
+          label="Coordinate LED ownership"
+          description="SignalBar and StripMine exchange a short local lease before either writes. Unknown applications are still treated as conflicts."
+          checked={status.stripmine_integration_enabled}
+          onChange={async (value) => setStatus(await setSetting("stripmine_integration_enabled", value))}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <div style={{ width: "100%", fontSize: ".82em", opacity: .86 }}>
+          {status.stripmine_detected
+            ? "StripMine is active and the ownership link is live."
+            : "StripMine is not currently claiming the light bar."}
+          <div style={{ marginTop: 6, opacity: .72 }}>
+            The selected owner keeps the bar until its output ends. Transfers wait for an acknowledgement, so intentional takeovers do not appear as external conflicts.
+          </div>
+        </div>
+      </PanelSectionRow>
+    </PanelSection>
+    <PanelSection title="Priority while StripMine is active">
+      {priorities.map(([label, key, description]) => <PanelSectionRow key={key}>
+        <DropdownItem
+          label={label}
+          description={description}
+          rgOptions={COMPANION_PRIORITY_OPTIONS}
+          selectedOption={status[key]}
+          onChange={async (option) => setStatus(await setSetting(key, option.data as CompanionPriority))}
+        />
+      </PanelSectionRow>)}
+      <PanelSectionRow>
+        <div style={{ width: "100%", fontSize: ".78em", opacity: .75 }}>
+          Playtime countdowns and their critical alerts always remain SignalBar priorities. If coordination is disabled, both plugins fall back to their independent ownership guards.
+        </div>
+      </PanelSectionRow>
+    </PanelSection>
+  </>;
+}
+
+type Page = "quick" | "artwork" | "performance" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "advanced";
 
 function Content({ page = "quick" }: { page?: Page }) {
   const [status, setStatusState] = useState<Status | null>(null);
@@ -715,7 +767,7 @@ function Content({ page = "quick" }: { page?: Page }) {
     void getStatus().then((next) => alive && setStatus(next)).catch(console.warn);
     const timer = window.setInterval(() => {
       void getStatus().then((next) => alive && setStatus(next)).catch(() => undefined);
-    }, page === "events" || page === "controllers" || page === "weather" ? 180 : 1000);
+    }, page === "events" || page === "controllers" || page === "weather" || page === "compatibility" ? 180 : 1000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -907,7 +959,7 @@ function Content({ page = "quick" }: { page?: Page }) {
         <PanelSectionRow>
           <DropdownItem
             label="Default display"
-            description="Used on Home and by games without an override. Light Events only leaves the bar to Steam or another app between notification, achievement, screenshot and recording animations. Disabled turns off every SignalBar light."
+            description="Used on Home and by games without an override. Signals only removes Artwork, Performance and Weather while keeping Light Events, countdowns, controller alerts and enabled battery or charging status alive. Disabled turns off every SignalBar light."
             rgOptions={MODE_OPTIONS}
             selectedOption={status.default_mode}
             onChange={async (option) => setStatus(await setMode(String(option.data)))}
@@ -921,7 +973,7 @@ function Content({ page = "quick" }: { page?: Page }) {
             onChange={async (option) => setStatus(await setGameDisplay(status.game.appid, String(option.data)))} /></PanelSectionRow>
           <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
             {status.default_mode === "disabled" ? "SignalBar is disabled. The saved game choice will apply when re-enabled."
-              : status.default_mode === "events" ? "Light Events only is global: saved game displays remain dormant while short Steam events can still use the bar."
+              : status.default_mode === "events" ? "Signals only is global: saved game displays remain dormant while Light Events, countdowns and enabled controller signals can still use the bar."
               : `Active display: ${status.mode === "performance" ? "Performance" : "Artwork"}${status.display_override === "inherit" ? " (default)" : " (game profile)"}. Countdowns and short alerts keep their usual priority.`}
           </div></PanelSectionRow>
         </> : <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>Launch a game to save its own Artwork or Performance choice.</div></PanelSectionRow>}
@@ -1151,6 +1203,8 @@ function Content({ page = "quick" }: { page?: Page }) {
 
       {page === "weather" ? <WeatherPanel status={status} setStatus={setStatus} /> : null}
 
+      {page === "compatibility" ? <CompatibilityPanel status={status} setStatus={setStatus} /> : null}
+
       {page === "advanced" ? <PanelSection title="Advanced / debug">
         <PanelSectionRow>
           <ToggleField
@@ -1295,6 +1349,7 @@ function SignalBarSettings() {
     { title: "Light events", route: "/signalbar/settings/events", content: <Content page="events" /> },
     { title: "Controllers", route: "/signalbar/settings/controllers", content: <Content page="controllers" /> },
     { title: "Weather", route: "/signalbar/settings/weather", content: <Content page="weather" /> },
+    { title: "Compatibility", route: "/signalbar/settings/compatibility", content: <Content page="compatibility" /> },
     "separator",
     { title: "Advanced / debug", route: "/signalbar/settings/advanced", content: <Content page="advanced" /> },
   ]} />;

@@ -53,6 +53,23 @@ class FakeHardware:
 
 
 class CoreTests(unittest.TestCase):
+    def test_stripmine_priority_maps_every_configurable_provider_family(self):
+        values = {
+            "stripmine_priority_artwork": "stripmine",
+            "stripmine_priority_performance": "signalbar",
+            "stripmine_priority_weather": "stripmine",
+            "stripmine_priority_controller": "signalbar",
+            "stripmine_priority_light_events": "signalbar",
+        }
+        self.assertEqual(Engine._stripmine_priority("artwork:hero", values), "stripmine")
+        self.assertEqual(Engine._stripmine_priority("performance", values), "signalbar")
+        self.assertEqual(Engine._stripmine_priority("weather:cloud", values), "stripmine")
+        self.assertEqual(Engine._stripmine_priority("controller:persistent", values), "signalbar")
+        self.assertEqual(Engine._stripmine_priority("event:achievement", values), "signalbar")
+        self.assertEqual(Engine._stripmine_priority("countdown", values), "signalbar")
+        self.assertEqual(Engine._stripmine_priority("none", values), "stripmine")
+        self.assertEqual(Engine._stripmine_priority("valve", values), "stripmine")
+
     def test_performance_mapping_zero_to_seventeen(self):
         self.assertEqual(sum(pixel != (0, 0, 0) for pixel in performance_frame(0, 60)), 0)
         self.assertEqual(sum(pixel != (0, 0, 0) for pixel in performance_frame(70, 60)), 12)

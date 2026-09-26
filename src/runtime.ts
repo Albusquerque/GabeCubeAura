@@ -17,8 +17,13 @@ import { ControllerMonitor, isSteamInputService } from "./controller_monitor";
 import { isSteamControllerStore } from "./controller_battery";
 import type { SteamControllerStore } from "./controller_battery";
 import { normalizeAppId } from "./steam_app_id";
-import { classifySteamNotification, screenshotWasCaptured } from "./steam_events";
-import type { LightEvent } from "./steam_events";
+import {
+  classifySteamNotification,
+  CommunityNotificationObserver,
+  isSteamServerNotificationStore,
+  screenshotWasCaptured,
+} from "./steam_events";
+import type { LightEvent, SteamServerNotificationStore } from "./steam_events";
 import type { Status } from "./types";
 
 declare const SteamClient: any;
@@ -63,6 +68,11 @@ class SignalBarRuntime {
   private parentalRegistration: Registration;
   private notificationsRegistration: Registration;
   private screenshotRegistration: Registration;
+  private communityNotificationsTimer: number | undefined;
+  private communityNotificationStore: SteamServerNotificationStore | undefined;
+  private communityNotificationObserver = new CommunityNotificationObserver();
+  private lastNativeCommentAt = 0;
+  private lastServerCommentAt = 0;
   private controllerMonitor: ControllerMonitor | undefined;
 
   start() {
@@ -77,6 +87,10 @@ class SignalBarRuntime {
   stop() {
     this.alive = false;
     if (this.pollTimer !== undefined) window.clearInterval(this.pollTimer);
+    if (this.communityNotificationsTimer !== undefined) {
+      window.clearInterval(this.communityNotificationsTimer);
+      this.communityNotificationsTimer = undefined;
+    }
     if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
     this.gameRegistration?.unregister?.();
     this.downloadRegistration?.unregister?.();
@@ -84,6 +98,10 @@ class SignalBarRuntime {
     this.parentalRegistration?.unregister?.();
     this.notificationsRegistration?.unregister?.();
     this.screenshotRegistration?.unregister?.();
+    this.communityNotificationStore = undefined;
+    this.communityNotificationObserver.reset();
+    this.lastNativeCommentAt = 0;
+    this.lastServerCommentAt = 0;
     void this.controllerMonitor?.stop().then(() => resetControllers()).catch(console.warn);
     void setSteamActivity(false, "").catch(() => undefined);
     console.log("[SignalBar] background runtime stopped");
@@ -265,13 +283,52 @@ class SignalBarRuntime {
       this.notificationsRegistration = SteamClient?.Notifications?.RegisterForNotifications?.(
         (_index: number, type: number) => {
           if (!this.alive) return;
-          const kind = classifySteamNotification(Number(type));
+          const numericType = Number(type);
+          const kind = classifySteamNotification(numericType);
           if (!kind) return;
+          if (numericType === 27) {
+            const now = Date.now();
+            const duplicatesServerEvent = now - this.lastServerCommentAt < 2500;
+            this.lastNativeCommentAt = now;
+            if (duplicatesServerEvent) return;
+          }
           this.emitLightEvent(kind);
         },
       );
     } catch (error) {
       console.warn("[SignalBar] Steam notification hook unavailable", error);
+    }
+    this.communityNotificationObserver.reset();
+    this.lastNativeCommentAt = 0;
+    this.lastServerCommentAt = 0;
+    this.scanCommunityNotifications();
+    this.communityNotificationsTimer = window.setInterval(
+      () => this.scanCommunityNotifications(),
+      1000,
+    );
+  }
+
+  private scanCommunityNotifications() {
+    if (!this.alive) return;
+    try {
+      if (!this.communityNotificationStore) {
+        this.communityNotificationStore = findModuleExport(isSteamServerNotificationStore);
+        if (this.communityNotificationStore) {
+          console.log("[SignalBar] Steam Community notification centre connected");
+        }
+      }
+      const events = this.communityNotificationObserver.scan(this.communityNotificationStore);
+      events.forEach((event) => {
+        if (event.type === 3) {
+          const now = Date.now();
+          const duplicatesNativeEvent = now - this.lastNativeCommentAt < 2500;
+          this.lastServerCommentAt = now;
+          if (duplicatesNativeEvent) return;
+        }
+        this.emitLightEvent("notification");
+      });
+    } catch (error) {
+      console.warn("[SignalBar] Steam Community notification hook unavailable", error);
     }
   }
 

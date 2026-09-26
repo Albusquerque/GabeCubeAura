@@ -60,13 +60,13 @@ test("snapshot shows Home defaults without inventing a game-specific profile", (
   assert.match(snapshot[1].lines[1], /^This game: none/);
 });
 
-test("snapshot names the Light Events only display mode", () => {
+test("snapshot names the Signals only display mode", () => {
   const status = { ...sampleStatus,
     game: { appid: 42, title: "StripMine" },
     default_mode: "events", mode: "events", display_override: "performance",
   } as Status;
   const snapshot = buildSettingsSnapshot(status);
-  assert.ok(snapshot[0].lines[0].includes("Light Events only"));
+  assert.ok(snapshot[0].lines[0].includes("Signals only"));
 });
 
 test("weather snapshot lists retained loops without removed temperature controls", () => {

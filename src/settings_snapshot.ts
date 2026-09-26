@@ -17,7 +17,7 @@ const selectedLabel = (options: readonly { data: string; label: string }[], valu
 
 const artworkSource = { hero: "Library Hero", header: "Library Header", capsule: "Library Capsule" };
 const artworkRow = { auto: "Auto", center: "Centre", lower: "Lower", manual: "Manual" };
-const displayMode = { artwork: "Artwork", performance: "Performance", events: "Light Events only", disabled: "Disabled" };
+const displayMode = { artwork: "Artwork", performance: "Performance", events: "Signals only", disabled: "Disabled" };
 const response = { responsive: "Responsive", balanced: "Balanced", smooth: "Smooth" };
 const palette = {
   thermal: "Cyan → amber → red", classic: "Green → yellow → red",

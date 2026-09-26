@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from signalbar.arbiter import Arbiter
 from signalbar.backend import Engine
-from signalbar.integration import LightEventLease
+from signalbar.integration import LightEventLease, StripMineClaimReader
 from signalbar.models import GameState, ProviderOutput, normalize_frame
 from signalbar.providers.events import DURATIONS, VARIANT_DURATIONS, EventProvider, RED, event_frame
 from signalbar.settings import SettingsStore
@@ -59,8 +59,8 @@ class RecordingLease:
         self.refreshes = []
         self.releases = 0
 
-    def refresh(self, event=""):
-        self.refreshes.append(event)
+    def refresh(self, event="", purpose="light-event"):
+        self.refreshes.append((event, purpose))
         return True
 
     def acknowledged(self):
@@ -68,6 +68,34 @@ class RecordingLease:
 
     def release(self):
         self.releases += 1
+
+
+class RecordingStripMineClaim:
+    def __init__(self):
+        self.enabled = True
+        self.acknowledgements = []
+
+    def active(self):
+        return self.enabled
+
+    def acknowledge(self, priority, provider=""):
+        self.acknowledgements.append((priority, provider))
+        return True
+
+    def release(self):
+        self.enabled = False
+
+
+class OrderedStripMineClaim(RecordingStripMineClaim):
+    def __init__(self, hardware):
+        super().__init__()
+        self.enabled = False
+        self.hardware = hardware
+        self.frames_at_acknowledgement = []
+
+    def acknowledge(self, priority, provider=""):
+        self.frames_at_acknowledgement.append(self.hardware.frame)
+        return super().acknowledge(priority, provider)
 
 
 class EventTests(unittest.TestCase):
@@ -214,13 +242,15 @@ class EventTests(unittest.TestCase):
                          "event:achievement")
         without_event = {**kwargs, "event": ProviderOutput("event", None, "")}
         events_only = arbiter.choose(mode="events", guard_allows=True, **without_event)
-        self.assertEqual(events_only.provider, "none")
-        self.assertIsNone(events_only.frame)
+        self.assertEqual(events_only.provider, "countdown")
+        without_timer = {**without_event, "signal": ProviderOutput("countdown", None, "")}
+        events_only_idle = arbiter.choose(mode="events", guard_allows=True, **without_timer)
+        self.assertEqual(events_only_idle.provider, "none")
+        self.assertIsNone(events_only_idle.frame)
         self.assertEqual(arbiter.choose(mode="artwork", guard_allows=False, **without_event).provider,
                          "valve")
         self.assertEqual(arbiter.choose(mode="artwork", guard_allows=True, **without_event).provider,
                          "countdown")
-        without_timer = {**without_event, "signal": ProviderOutput("countdown", None, "")}
         marked = arbiter.choose(mode="artwork", guard_allows=True,
                                 recording_marker=True, **without_timer)
         self.assertEqual(marked.frame[8], RED)
@@ -310,7 +340,9 @@ class EventTests(unittest.TestCase):
                 self.assertTrue(engine.trigger_event("notification"))
                 self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "event:notification"))
                 self.assertTrue(lease.refreshes)
-                self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "none"))
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["provider"] in {"none", "valve"}
+                ))
                 self.assertGreater(lease.releases, 0)
                 self.assertEqual(hardware.frame, NATIVE)
             finally:
@@ -335,6 +367,87 @@ class EventTests(unittest.TestCase):
             lease.release()
             self.assertFalse(path.exists())
             self.assertFalse(lease.ack_path.exists())
+
+    def test_stripmine_claim_is_owner_scoped_and_acknowledges_priority(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "stripmine-led-claim.json"
+            clock = Clock()
+            reader = StripMineClaimReader(path, clock=clock)
+            path.write_text(json.dumps({
+                "protocol": 1, "owner": "StripMine", "purpose": "continuous-game",
+                "token": "mine-1", "expires_at": 110.0,
+            }), encoding="utf-8")
+            self.assertTrue(reader.active())
+            self.assertTrue(reader.acknowledge("signalbar", "weather:cloud"))
+            acknowledgement = json.loads(reader.ack_path.read_text(encoding="utf-8"))
+            self.assertEqual(acknowledgement["token"], "mine-1")
+            self.assertEqual(acknowledgement["priority"], "signalbar")
+            self.assertEqual(acknowledgement["provider"], "weather:cloud")
+            clock.advance(11)
+            self.assertFalse(reader.active())
+
+    def test_configured_provider_priority_transfers_without_guard_conflict(self):
+        with tempfile.TemporaryDirectory() as folder:
+            hardware = LoopHardware()
+            lease = RecordingLease()
+            claim = RecordingStripMineClaim()
+            settings = SettingsStore(str(Path(folder) / "settings.json"))
+            engine = Engine(settings, str(Path(folder) / "artwork.json"),
+                            hardware_factory=lambda: hardware, event_lease=lease,
+                            stripmine_claim=claim)
+            engine.arbiter.choose = lambda **_kwargs: ProviderOutput("performance", BASE, "test")
+            engine.start()
+            try:
+                self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "companion:stripmine"))
+                self.assertEqual(hardware.frame, NATIVE)
+                self.assertIn(("stripmine", "performance"), claim.acknowledgements)
+                engine.update_settings({"stripmine_priority_performance": "signalbar"})
+                self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "performance"))
+                self.assertEqual(hardware.frame, BASE)
+                self.assertIn(("signalbar", "performance"), claim.acknowledgements)
+                self.assertTrue(any(purpose == "priority-output" for _provider, purpose in lease.refreshes))
+            finally:
+                engine.stop()
+
+    def test_stripmine_priority_is_acknowledged_only_after_signalbar_restores(self):
+        with tempfile.TemporaryDirectory() as folder:
+            hardware = LoopHardware()
+            claim = OrderedStripMineClaim(hardware)
+            settings = SettingsStore(str(Path(folder) / "settings.json"))
+            engine = Engine(settings, str(Path(folder) / "artwork.json"),
+                            hardware_factory=lambda: hardware, stripmine_claim=claim)
+            engine.arbiter.choose = lambda **_kwargs: ProviderOutput("performance", BASE, "test")
+            engine.start()
+            try:
+                self.assertTrue(self._wait_until(lambda: hardware.frame == BASE))
+                claim.enabled = True
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["provider"] == "companion:stripmine"
+                ))
+                self.assertTrue(claim.frames_at_acknowledgement)
+                self.assertEqual(claim.frames_at_acknowledgement[-1], NATIVE)
+                self.assertEqual(hardware.frame, NATIVE)
+            finally:
+                engine.stop()
+
+    def test_empty_signals_only_display_yields_to_active_stripmine(self):
+        with tempfile.TemporaryDirectory() as folder:
+            hardware = LoopHardware()
+            claim = RecordingStripMineClaim()
+            settings = SettingsStore(str(Path(folder) / "settings.json"))
+            settings.update({"mode": "events", "controller_battery_display": "off",
+                             "weather_display": "off"})
+            engine = Engine(settings, str(Path(folder) / "artwork.json"),
+                            hardware_factory=lambda: hardware, stripmine_claim=claim)
+            engine.start()
+            try:
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["provider"] == "companion:stripmine"
+                ))
+                self.assertIn(("stripmine", "none"), claim.acknowledgements)
+                self.assertEqual(hardware.frame, NATIVE)
+            finally:
+                engine.stop()
 
     def test_new_native_write_interrupts_event_without_restoring_stale_frame(self):
         with tempfile.TemporaryDirectory() as folder:

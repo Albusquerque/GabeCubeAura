@@ -80,6 +80,12 @@ DEFAULTS = {
     "weather_breaks_night_variant": 0,
     "weather_snow_variant": 1,
     "weather_storm_variant": 0,
+    "stripmine_integration_enabled": True,
+    "stripmine_priority_artwork": "stripmine",
+    "stripmine_priority_performance": "stripmine",
+    "stripmine_priority_weather": "stripmine",
+    "stripmine_priority_controller": "stripmine",
+    "stripmine_priority_light_events": "signalbar",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
 }
@@ -92,6 +98,7 @@ VALID_PERFORMANCE_SMOOTHING = {"responsive", "balanced", "smooth"}
 VALID_MIXED_DIRECTIONS = {"same", "mirrored"}
 VALID_TEMPERATURE_PALETTES = {"thermal", "classic", "icefire", "custom"}
 VALID_COUNTDOWN_COLOURS = {"cyan", "green", "amber", "violet", "white"}
+VALID_COMPANION_PRIORITIES = {"stripmine", "signalbar"}
 EVENT_VARIANTS = {
     "event_notification_variant": {
         "notification-original", "notification-return", "notification-echo",
@@ -176,6 +183,14 @@ class SettingsStore:
             return dict(self._data)
 
     def _validate(self):
+        self._data["stripmine_integration_enabled"] = bool(self._data["stripmine_integration_enabled"])
+        for key in (
+            "stripmine_priority_artwork", "stripmine_priority_performance",
+            "stripmine_priority_weather", "stripmine_priority_controller",
+            "stripmine_priority_light_events",
+        ):
+            if self._data[key] not in VALID_COMPANION_PRIORITIES:
+                self._data[key] = DEFAULTS[key]
         self._data["performance_enabled"] = bool(self._data["performance_enabled"])
         self._data["performance_always"] = bool(self._data["performance_always"])
         if self._data["mode"] == "automatic":

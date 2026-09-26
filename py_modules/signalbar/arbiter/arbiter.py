@@ -24,10 +24,6 @@ class Arbiter:
                controller_event=None, controller_base=None, weather_base=None):
         if mode == "disabled":
             return ProviderOutput("none", None, "SignalBar disabled")
-        if mode == "events":
-            if event is not None and event.frame is not None:
-                return event
-            return ProviderOutput("none", None, "Light Events only; waiting for a Steam event")
         # Short, opted-in effects can briefly use an otherwise native-owned bar.
         # The runtime still yields if it detects a new external write mid-effect.
         if controller_event is not None and controller_event.frame is not None and not signal_critical and controller_event.provider == "controller:low":
@@ -43,6 +39,13 @@ class Arbiter:
             return signal
         if signal is not None and signal.frame is not None:
             return signal
+
+        if mode == "events":
+            if controller_base is not None and controller_base.frame is not None:
+                return self._with_recording_marker(
+                    controller_base, recording_marker, recording_marker_isolation,
+                )
+            return ProviderOutput("none", None, "Signals only; waiting for an event or controller state")
 
         if weather_base is not None and weather_base.provider == "weather:preview" and weather_base.frame is not None:
             return self._with_recording_marker(weather_base, recording_marker, recording_marker_isolation)
