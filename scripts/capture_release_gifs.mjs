@@ -17,7 +17,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const conceptRoot = path.resolve(process.argv[2] || path.join(root, "..", "signalbar-concept-site"));
 const requestedCaptures = new Set(process.argv.slice(3));
 const conceptIndex = path.join(conceptRoot, "index.html");
-const outputRoot = path.join(root, "assets", "readme-gifs");
+const outputRoot = path.join(root, "docs", "media", "animations");
 const interval = 125;
 
 await fs.access(conceptIndex);

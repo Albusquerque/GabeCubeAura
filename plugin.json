@@ -1,10 +1,11 @@
 {
   "name": "GabeCubeAura",
-  "author": "Albusquerque",
+  "author": "Albus Querque",
   "flags": ["root"],
   "api_version": 1,
   "publish": {
     "tags": ["system", "utility", "root"],
-    "description": "Smart status lighting for the official Steam Machine light bar."
+    "description": "Artwork, custom effects, weather and live status lighting for the Steam Machine light bar.",
+    "image": "https://raw.githubusercontent.com/Albusquerque/GabeCubeAura/main/docs/media/gabecubeaura-product-hero.png"
   }
 }

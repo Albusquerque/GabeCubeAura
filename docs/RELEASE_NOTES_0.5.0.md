@@ -24,7 +24,7 @@ are preserved when upgrading.
   colours, and controller-only brightness. Preview buttons use sample data and
   work without a controller connected.
 
-![Two mirrored controller gauges followed by continuous charging](https://raw.githubusercontent.com/Albusquerque/SignalBar/main/assets/readme-gifs/controller-battery.gif)
+![Two mirrored controller gauges followed by continuous charging](https://raw.githubusercontent.com/Albusquerque/GabeCubeAura/main/docs/media/animations/controller-battery.gif)
 
 [Explore the interactive controller mockup](https://albusquerque.github.io/signalbar-controller-battery/)
 

@@ -1,9 +1,8 @@
 node_modules/
+.pnpm-store/
 dist/
 out/
 __pycache__/
 *.pyc
 .DS_Store
 CHECKPOINT.md
-assets/signalbar-decky-showcase-v1.png
-assets/signalbar-decky-showcase-v2.png

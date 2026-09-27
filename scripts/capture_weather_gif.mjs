@@ -7,7 +7,7 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 const site = process.argv[2] || "http://127.0.0.1:8765/";
-const output = path.join(root, "assets/readme-gifs/weather.gif");
+const output = path.join(root, "docs/media/animations/weather.gif");
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "gabecubeaura-weather-gif-"));
 const browser = await chromium.launch({ headless: true });
 const interval = 125;

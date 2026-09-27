@@ -3,26 +3,21 @@ import unittest
 
 
 class PackagingTests(unittest.TestCase):
-    def test_required_decky_files_exist_and_release_documents_are_packaged(self):
+    def test_required_decky_files_exist_and_runtime_package_stays_lean(self):
         root = Path(__file__).resolve().parents[2]
         for relative in (
             "main.py", "plugin.json", "package.json", "LICENSE",
-            "scripts/package_plugin.py", "docs/GABECUBEAURA_1.0.0.md",
+            "THIRD_PARTY_NOTICES.md", "scripts/package_plugin.py",
+            "docs/GABECUBEAURA_1.0.0.md",
         ):
             self.assertTrue((root / relative).is_file(), relative)
         self.assertTrue((root / "py_modules/signalbar/backend/engine.py").is_file())
         from scripts.package_plugin import iter_files
         packaged = {str(path.relative_to(root)) for path in iter_files(require_build=False)}
-        self.assertIn("docs/GABECUBEAURA_1.0.0.md", packaged)
-        self.assertIn("docs/LAUNCH_ARTWORK_ANIMATIONS.md", packaged)
-        self.assertIn("docs/RELEASE_NOTES_1.0.0.md", packaged)
-        self.assertIn("assets/readme-gifs/controller-battery.gif", packaged)
-        for animation in (
-            "customization-plus.gif",
-            "game-launch-palettes.gif",
-            "game-launch-patterns.gif",
-        ):
-            self.assertIn(f"assets/readme-gifs/{animation}", packaged)
+        self.assertIn("THIRD_PARTY_NOTICES.md", packaged)
+        self.assertIn("py_modules/signalbar/backend/engine.py", packaged)
+        self.assertFalse(any(path.startswith("assets/") for path in packaged))
+        self.assertFalse(any(path.startswith("docs/") for path in packaged))
 
     def test_rebrand_standard_settings_and_lifecycle_guards(self):
         root = Path(__file__).resolve().parents[2]

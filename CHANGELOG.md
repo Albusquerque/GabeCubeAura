@@ -1,5 +1,16 @@
 # Changelog
 
+## Decky Store submission preparation - 2026-09-27
+
+- Set the public package and plugin author to Albus Querque and add the canonical repository, issue tracker and homepage metadata.
+- Add a Store description and a public GabeCubeAura product image to the Decky publish metadata.
+- Retain the original Steam Deck Homebrew template copyright notice beside the GabeCubeAura copyright.
+- Adopt a pnpm 9 lockfile and package-manager pin for reproducible Store review builds.
+- Move documentation media out of Decky's reserved root `assets` directory and remove obsolete SignalBar interface captures.
+- Keep the installable archive focused on runtime files, the license and third-party notices.
+- Add a Store submission record with the proposed listing text, permission explanation, backend answers and remaining third-party test requirements.
+- Keep version 1.0.0 because these changes prepare the first Store submission and do not change runtime behaviour.
+
 ## 1.0.0 - 2026-09-27
 
 - Rebrand the former SignalBar product as **GabeCubeAura** across the Decky product, UI, logs, package, configuration export, documentation, GitHub repository and public concept pages. Internal setting keys and the StripMine protocol identity remain unchanged. A fresh GabeCubeAura settings directory copies an existing SignalBar configuration and artwork caches once.

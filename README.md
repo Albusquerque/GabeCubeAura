@@ -1,6 +1,7 @@
 # GabeCubeAura
 
-**Smart status lighting for the official Steam Machine**
+**Game artwork, custom effects, weather and live status lighting for the
+official Steam Machine's 17-pixel light bar.**
 
 Make your Steam Machine's 17-pixel light bar useful and a little more
 expressive. Choose separate permanent displays for Home and games, then let
@@ -26,7 +27,7 @@ Local custom artwork is preferred, including SteamGridDB replacements and
 images assigned to non-Steam shortcuts. In Artwork mode, the quick Decky panel
 shows the active game image directly above its exact 17-colour sample.
 
-![Artwork mode with Deep Rock Galactic artwork](assets/signalbar-artwork-mode-v1.png)
+![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](docs/media/animations/game-launch-palettes.gif)
 
 ### Game launch animations
 
@@ -37,15 +38,13 @@ three dominant colours locally, offers ten patterns, and uses a 3–45 second
 visible timer. Short alerts pause that timer and the sequence resumes after the
 alert.
 
-The first animation shows three separate AppIDs and the two- or three-colour
-palette extracted from each Library Hero. The second stays on Balatro and shows
-three of the ten available launch patterns at a deliberately slower pace.
+The animation above shows three separate AppIDs and the two- or three-colour
+palette extracted from each Library Hero. The animation below stays on Balatro
+and shows three of the ten available launch patterns at a deliberately slower pace.
 These are browser illustrations generated from the Concept Lab, not proof of
 physical LED colour fidelity.
 
-![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](assets/readme-gifs/game-launch-palettes.gif)
-
-![Balatro launch animation using a two-colour palette with Crescendo, Color wipe, and Scanner](assets/readme-gifs/game-launch-patterns.gif)
+![Balatro launch animation using a two-colour palette with Crescendo, Color wipe, and Scanner](docs/media/animations/game-launch-patterns.gif)
 
 ### Customization+
 
@@ -64,7 +63,7 @@ The animation below moves through two- and three-colour examples at different
 speeds. It is captured from the browser simulator, so diffuser appearance may
 differ slightly from the physical Steam Machine.
 
-![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](assets/readme-gifs/customization-plus.gif)
+![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](docs/media/animations/customization-plus.gif)
 
 ### Performance
 
@@ -81,7 +80,7 @@ Performance settings immediately shows fresh readings without first selecting
 Performance as the active display. Missing or expired readings are not retained
 as if they were live.
 
-![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](assets/readme-gifs/performance.gif)
+![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](docs/media/animations/performance.gif)
 
 ### Display routing and temporary layers
 
@@ -108,7 +107,7 @@ priority when a game starts, or you can start a personal timer. The bar empties
 from right to left, turns amber below 15 minutes, and turns red below five.
 During the final eight seconds, three short white flashes repeat until zero.
 
-![Animated playtime countdown](assets/readme-gifs/countdown.gif)
+![Animated playtime countdown](docs/media/animations/countdown.gif)
 
 ### Controller battery
 
@@ -121,7 +120,7 @@ Charging can play a short cue or a continuous blue-and-white animation that
 stops at 100%. Choose the animation styles, colours, brightness and alert
 contexts. The GIF shows the two-controller gauge and continuous charging.
 
-![Two mirrored controller gauges followed by continuous charging](assets/readme-gifs/controller-battery.gif)
+![Two mirrored controller gauges followed by continuous charging](docs/media/animations/controller-battery.gif)
 
 Battery and charging data depend on the controller. Unknown levels are never
 invented; see the [controller test notes](docs/CONTROLLERS_RESEARCH.md).
@@ -136,7 +135,7 @@ Cloud has four choices, including **Cross & gather** and the longer **Slow
 convergence**, which is the fresh-install default. Existing Cloud selections
 are kept.
 
-![Weather animations on the Steam Machine light bar](assets/readme-gifs/weather.gif)
+![Weather animations on the Steam Machine light bar](docs/media/animations/weather.gif)
 
 An optional, experimental weather icon and temperature can also appear beside
 the SteamOS clock. Choose °C or °F for the top-bar number. This works
@@ -144,7 +143,7 @@ independently of the LED weather scene and has been confirmed on one Steam
 Machine; Steam UI updates could change its placement. No temperature colours
 are mapped to LEDs.
 
-<img src="assets/weather-topbar-photo-large.png" alt="Weather icon and temperature beside the SteamOS clock on a real Steam Machine" width="700">
+<img src="docs/media/weather-topbar-steam-machine.png" alt="Weather icon and temperature beside the SteamOS clock on a real Steam Machine" width="700">
 
 Select a city before enabling live weather. If you enter a country, use its
 full name (for example France), not a two-letter code. GabeCubeAura fetches current
@@ -163,19 +162,19 @@ Each category has its own switch, animation selector, and nearby live preview.
 Return beacon is the fresh-install choice. The GIF below shows Wide echo,
 another selectable notification style.
 
-![Wide echo notification](assets/readme-gifs/notification.gif)
+![Wide echo notification](docs/media/animations/notification.gif)
 
 ### Screenshot
 
 An icy shutter closes, followed by two flashes with expanding echoes.
 
-![Expanding echo screenshot animation](assets/readme-gifs/screenshot.gif)
+![Expanding echo screenshot animation](docs/media/animations/screenshot.gif)
 
 ### Achievement
 
 Constellation round trip is the fresh-install choice. The GIF below shows it.
 
-![Constellation achievement animation](assets/readme-gifs/achievement.gif)
+![Constellation achievement animation](docs/media/animations/achievement.gif)
 
 ### Recording
 
@@ -184,7 +183,7 @@ stays pure red over a compatible permanent display. Its two neighbours are black
 default to keep the marker distinct through the physical diffuser. The marker
 never modifies a playtime countdown or another event animation.
 
-![Recording start, centre marker, and stop](assets/readme-gifs/recording.gif)
+![Recording start, centre marker, and stop](docs/media/animations/recording.gif)
 
 ## How priorities work
 
@@ -353,10 +352,10 @@ own last verified write.
 ## Build and test
 
 ```bash
-npm install
-npm test
-npm run build
-npm run package
+corepack pnpm install --frozen-lockfile
+corepack pnpm test
+corepack pnpm build
+corepack pnpm package
 ```
 
 The installable archive is written to `out/GabeCubeAura-v1.0.0.zip`.

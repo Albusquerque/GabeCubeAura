@@ -1,8 +1,9 @@
 {
   "name": "gabecubeaura",
   "version": "1.0.0",
-  "description": "Smart status lighting for Steam Machine",
+  "description": "Artwork, custom effects, weather and live status lighting for the official Steam Machine",
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "rollup -c -w",
@@ -19,10 +20,20 @@
     "led",
     "status"
   ],
+  "author": "Albus Querque",
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Albusquerque/GabeCubeAura.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Albusquerque/GabeCubeAura/issues"
+  },
+  "homepage": "https://github.com/Albusquerque/GabeCubeAura#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",
+    "@rollup/rollup-linux-x64-musl": "^4.53.3",
     "@types/react": "19.1.1",
     "@types/react-dom": "19.1.1",
     "@types/webpack": "^5.28.5",
