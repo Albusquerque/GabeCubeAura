@@ -15,6 +15,7 @@ import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..");
 const conceptRoot = path.resolve(process.argv[2] || path.join(root, "..", "signalbar-concept-site"));
+const requestedCaptures = new Set(process.argv.slice(3));
 const conceptIndex = path.join(conceptRoot, "index.html");
 const outputRoot = path.join(root, "assets", "readme-gifs");
 const interval = 125;
@@ -185,14 +186,14 @@ async function captureLaunchPatterns() {
   const folder = path.join(scratch, "game-launch-patterns");
   const stage = page.locator(".stage-shell");
   await page.locator('[data-tab="launches"]').click();
-  await selectLaunchGame(page, "balatro", 3);
-  await page.locator("#launchDuration").fill("20");
+  await selectLaunchGame(page, "balatro", 2);
+  await page.locator("#launchDuration").fill("4");
   let frame = 0;
 
-  for (const pattern of ["arpege-crossed", "legato", "scanner", "theater-chase", "ripple"]) {
+  for (const pattern of ["crescendo", "color-wipe", "scanner"]) {
     await page.locator("#launchPattern").selectOption(pattern);
     await page.locator("#launchPreview").click();
-    frame += await captureFor(stage, 1900, folder, frame);
+    frame += await captureFor(stage, 4600, folder, frame);
   }
 
   encode("game-launch-patterns", folder);
@@ -200,9 +201,9 @@ async function captureLaunchPatterns() {
 }
 
 try {
-  await captureCustomization();
-  await captureLaunchPalettes();
-  await captureLaunchPatterns();
+  if (!requestedCaptures.size || requestedCaptures.has("customization-plus")) await captureCustomization();
+  if (!requestedCaptures.size || requestedCaptures.has("game-launch-palettes")) await captureLaunchPalettes();
+  if (!requestedCaptures.size || requestedCaptures.has("game-launch-patterns")) await captureLaunchPatterns();
 } finally {
   await browser.close();
   await fs.rm(scratch, { recursive: true, force: true });

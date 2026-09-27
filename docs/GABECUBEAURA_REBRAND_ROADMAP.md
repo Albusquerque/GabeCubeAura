@@ -43,7 +43,7 @@ does not delete the source.
 - The installable archive has one `GabeCubeAura/` root and includes the final
   documentation and README media.
 - Final archive: `GabeCubeAura-v1.0.0.zip`.
-- SHA-256: `63fc673eaa305590fc28fc2f5c68d25c4cbb23d9f51e5a169bcde276e86e4359`.
+- SHA-256: `568df220a5e889be4a739626874abc950ddecae23d30206b3abc4e2a4359ebb8`.
 
 ## Public sites
 
@@ -87,6 +87,11 @@ The final Concept Lab regenerated these README animations with
 - `customization-plus.gif`;
 - `game-launch-palettes.gif`;
 - `game-launch-patterns.gif`.
+
+The Game Launch patterns capture uses one Balatro artwork palette with two
+colours and three deliberately paced patterns: Crescendo, Color wipe and
+Scanner. Each sequence runs to its four-second fade before the next one starts,
+avoiding the fast decorative effect of the earlier five-pattern capture.
 
 The captures remain explicitly described as browser simulations. Hardware
 validation is recorded separately as a physical observation by the project

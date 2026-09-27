@@ -38,13 +38,14 @@ visible timer. Short alerts pause that timer and the sequence resumes after the
 alert.
 
 The first animation shows three separate AppIDs and the two- or three-colour
-palette extracted from each Library Hero. The second shows five of the ten
-available launch patterns. These are browser illustrations generated from the
-Concept Lab, not proof of physical LED colour fidelity.
+palette extracted from each Library Hero. The second stays on Balatro and shows
+three of the ten available launch patterns at a deliberately slower pace.
+These are browser illustrations generated from the Concept Lab, not proof of
+physical LED colour fidelity.
 
 ![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](assets/readme-gifs/game-launch-palettes.gif)
 
-![Balatro launch animation cycling through Crossed arpeggio, Legato, Scanner, Theater chase, and Ripple](assets/readme-gifs/game-launch-patterns.gif)
+![Balatro launch animation using a two-colour palette with Crescendo, Color wipe, and Scanner](assets/readme-gifs/game-launch-patterns.gif)
 
 ### Customization+
 
