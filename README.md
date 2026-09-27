@@ -211,8 +211,9 @@ GabeCubeAura follows a strict order:
    Do not extract it.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
-4. Open **Decky > Settings > Developer > Install Plugin from ZIP** and select
-   the downloaded archive.
+4. Open **Decky > Settings > Developer**. Under **Third-Party Plugins**, choose
+   **Install Plugin from ZIP File**, select **Browse**, then select the
+   downloaded archive.
 5. Restart Decky Loader if the installed plugin does not appear immediately.
 
 ### Manual installation

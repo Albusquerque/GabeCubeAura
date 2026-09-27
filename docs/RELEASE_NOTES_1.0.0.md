@@ -35,6 +35,10 @@ The packaged ZIP is accompanied by `SHA256SUMS`.
 ## Install
 
 1. Download `GabeCubeAura-v1.0.0.zip` from this release.
-2. In Decky, open Settings, Developer, then Install Plugin from ZIP.
-3. Select the archive without extracting it.
-4. Restart Decky if GabeCubeAura does not appear immediately.
+2. Open **Decky > Settings > General** and enable **Developer mode** if the
+   **Developer** page is not already visible.
+3. Open **Decky > Settings > Developer**. Under **Third-Party Plugins**, choose
+   **Install Plugin from ZIP File**, then select **Browse**.
+4. Select the downloaded archive without extracting it and confirm the
+   installation.
+5. Restart Decky Loader if GabeCubeAura does not appear immediately.

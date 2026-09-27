@@ -43,7 +43,7 @@ does not delete the source.
 - The installable archive has one `GabeCubeAura/` root and includes the final
   documentation and README media.
 - Final archive: `GabeCubeAura-v1.0.0.zip`.
-- SHA-256: `adfd9235f4d6263307bf6573a7078dad477412521ff2cfe7df388ff46cda2d7c`.
+- SHA-256: `056fc79052b32065c35b6016dc644f7611fc929d585a7887bf634180b9af38d9`.
 
 ## Public sites
 
