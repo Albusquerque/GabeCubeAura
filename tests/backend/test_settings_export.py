@@ -18,16 +18,13 @@ from signalbar.settings.export import (
 
 
 class SettingsExportTests(unittest.TestCase):
-    def test_rebrand_prefers_cubeglow_and_migrates_settings_and_caches_once(self):
+    def test_rebrand_migrates_signalbar_settings_and_caches_once(self):
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            signalbar = base / "SignalBar"
-            legacy = base / "CubeGlow"
+            legacy = base / "SignalBar"
             current = base / "GabeCubeAura"
-            signalbar.mkdir()
             legacy.mkdir()
-            (signalbar / "config.json").write_bytes(b'{"mode":"artwork"}')
             expected = {
                 "config.json": b'{"mode":"weather"}',
                 "artwork-cache.json": b'{"artwork":true}',
@@ -42,7 +39,7 @@ class SettingsExportTests(unittest.TestCase):
                 spec = importlib.util.spec_from_file_location("gabecubeaura_migration_test", root / "main.py")
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
-                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "CubeGlow")
+                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "SignalBar")
                 self.assertEqual(
                     {path.name: path.read_bytes() for path in current.iterdir()},
                     expected,
@@ -51,22 +48,6 @@ class SettingsExportTests(unittest.TestCase):
                 (legacy / "config.json").write_bytes(b'{"mode":"performance"}')
                 self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "")
                 self.assertEqual((current / "config.json").read_bytes(), expected["config.json"])
-
-    def test_rebrand_falls_back_to_signalbar_when_cubeglow_is_absent(self):
-        root = Path(__file__).resolve().parents[2]
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            legacy = base / "SignalBar"
-            current = base / "GabeCubeAura"
-            legacy.mkdir()
-            (legacy / "config.json").write_bytes(b'{"mode":"weather"}')
-            decky = types.ModuleType("decky")
-            with patch.dict(sys.modules, {"decky": decky}):
-                spec = importlib.util.spec_from_file_location("gabecubeaura_signalbar_migration_test", root / "main.py")
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "SignalBar")
-                self.assertEqual((current / "config.json").read_bytes(), b'{"mode":"weather"}')
 
     def test_decky_import_and_reset_routes_reach_engine(self):
         root = Path(__file__).resolve().parents[2]

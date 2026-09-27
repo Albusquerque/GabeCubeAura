@@ -14,10 +14,11 @@ keeping Artwork or Performance active between events.
   when their display mode is selected.
 - Countdown, alert, and native ownership protections retain their priorities.
 
-## StripMine compatibility
+## StripMine coordination
 
-SignalBar and a compatible StripMine build can now share the physical light
-bar. Before a short event, SignalBar publishes a renewable handoff request and
+SignalBar and StripMine, both developed by the same author, can now share the
+physical light bar through their coordinated handoff protocol. Before a short
+event, SignalBar publishes a renewable handoff request and
 briefly waits for StripMine to yield. After the animation, SignalBar restores
 the exact previous frame and releases the handoff so StripMine can resume.
 

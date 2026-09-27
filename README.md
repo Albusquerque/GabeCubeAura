@@ -9,8 +9,7 @@ selected display returns.
 
 [Download GabeCubeAura v1.0.0](https://github.com/Albusquerque/GabeCubeAura/releases/tag/v1.0.0)
 
-GabeCubeAura is the new name of SignalBar. On first launch it imports an existing
-CubeGlow test configuration when present, otherwise it imports the latest
+GabeCubeAura is the new name of SignalBar. On first launch it imports existing
 SignalBar settings and artwork caches. Existing users keep their configuration.
 
 [Try the interactive GabeCubeAura preview before installing](https://albusquerque.github.io/gabecubeaura-concept/)
@@ -92,13 +91,14 @@ Controller alerts are separate temporary layers, so they work without forcing
 a particular permanent display. Choosing GabeCubeAura Off reproduces the former
 Signals-only behaviour: GabeCubeAura yields the bar between temporary signals.
 
-With StripMine v0.1.1-alpha.7 or newer, open **Settings → Compatibility** to
+StripMine is developed by the same author as GabeCubeAura. With StripMine
+v0.1.1-alpha.7 or newer, open **Settings → Compatibility** to
 choose which plugin owns the bar for Artwork, Performance, Weather, Controller
-displays, Game launches, and Light Events while the mine is active. GabeCubeAura and StripMine
-acknowledge every transfer before writing, then restore the previous owner
-automatically. No manual **Retry bar** action is required. Playtime countdowns
-remain GabeCubeAura priorities; unknown applications still trigger the normal
-ownership guard.
+displays, Game launches, and Light Events while the mine is active. GabeCubeAura
+and StripMine acknowledge every transfer before writing, then restore the
+previous owner automatically. No manual **Retry bar** action is required.
+Playtime countdowns remain GabeCubeAura priorities; unknown applications still
+trigger the normal ownership guard.
 
 ### Playtime Countdown
 

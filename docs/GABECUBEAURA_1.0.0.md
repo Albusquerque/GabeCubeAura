@@ -2,14 +2,14 @@
 
 ## Status
 
-GabeCubeAura replaces the temporary CubeGlow name and the former SignalBar
-product identity. Version 1.0.0 is the first public GabeCubeAura release.
+GabeCubeAura replaces the former SignalBar product identity. Version 1.0.0 is
+the first public GabeCubeAura release.
 
-The Python namespace, persistent `signalbar_*` keys, and the local StripMine
-handoff identity remain unchanged for compatibility. The Decky name, package,
+The Python namespace and persistent `signalbar_*` keys remain unchanged for
+upgrade compatibility. The StripMine handoff identity is also preserved;
+StripMine is developed by the same author. The Decky name, package,
 archive root, UI, logs, configuration export, and current documentation use
-GabeCubeAura. On first launch, GabeCubeAura first looks for the immediately
-preceding CubeGlow test configuration, then for SignalBar, and copies the
+GabeCubeAura. On first launch, GabeCubeAura looks for SignalBar and copies its
 configuration and artwork caches when its own settings directory is still empty.
 
 ## Product hierarchy

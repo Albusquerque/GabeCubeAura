@@ -2,7 +2,7 @@
 
 ## 1.0.0 - 2026-09-27
 
-- Rebrand the former SignalBar product as **GabeCubeAura** across the Decky product, UI, logs, package, configuration export, documentation, GitHub repository and public concept pages. Compatible internal setting and StripMine identities remain unchanged. A fresh GabeCubeAura settings directory prefers an existing CubeGlow configuration and artwork caches, then falls back to SignalBar, and copies them only once.
+- Rebrand the former SignalBar product as **GabeCubeAura** across the Decky product, UI, logs, package, configuration export, documentation, GitHub repository and public concept pages. Internal setting keys and the StripMine protocol identity remain unchanged. A fresh GabeCubeAura settings directory copies an existing SignalBar configuration and artwork caches once.
 - Restore Decky's standard `SidebarNavigation` for detailed settings, with one simple left-hand tab per feature. Rename the untouched route **GabeCubeAura Off**; this route leaves permanent output to Steam while temporary layers remain available, while the master switch still disables every GabeCubeAura output.
 - Add **Customization+** as a permanent Home and In-game display with exact opaque Hex/RGB colours, one/two/three-colour palettes, raw 34–255 brightness, functional 1–100 speed, direction, live preview, and 61 unchanged effect names grouped by dynamism as Calm & ambient, Flowing, and Energetic.
 - Remove the misleading Alpha control from GabeCubeAura colour pickers: the LED backend stores three opaque RGB channels and never consumed transparency.
@@ -39,11 +39,11 @@
 
 Official release. Changes since 0.6.1:
 
-### Light Events only and StripMine compatibility
+### Light Events only and StripMine coordination
 
 - Add **Light Events only** as a fourth display mode. It leaves the bar untouched between Steam notifications, achievements, screenshots, and recording animations. Saved Artwork and Performance profiles remain dormant until another display mode is selected.
 - Answer [issue #1](https://github.com/Albusquerque/SignalBar/issues/1): Light Events can now run without enabling Artwork or Performance.
-- Add cooperative Light-event handoff for StripMine. SignalBar publishes a short renewable lease, waits briefly for StripMine to yield, plays the event, restores the exact pre-event frame, then releases the lease so StripMine can resume automatically.
+- Add coordinated Light-event handoff for StripMine, which is developed by the same author. SignalBar publishes a short renewable lease, waits briefly for StripMine to yield, plays the event, restores the exact pre-event frame, then releases the lease so StripMine can resume automatically.
 - Keep the handoff fail-safe. The lease expires after a crash, and StripMine verifies the restored LED signature before reclaiming the bar. Local arbitration and lifecycle tests pass; the physical transition still requires Steam Machine validation.
 
 ### Reliability
@@ -55,7 +55,7 @@ Official release. Changes since 0.6.1:
 ## 0.7.0-alpha.5 - LOCAL ONLY - 2026-09-26
 
 - Add **Light Events only** as a fourth display mode. It leaves the bar untouched between Steam notification, achievement, screenshot, and recording animations; saved Artwork and Performance profiles remain dormant until another display mode is selected.
-- Add cooperative Light-event handoff for StripMine. SignalBar publishes a short renewable lease and waits for StripMine's acknowledgement before its first event frame, restores the exact pre-event frame, then releases the lease so StripMine can resume automatically. When no compatible companion is installed, the event proceeds after a brief timeout.
+- Add coordinated Light-event handoff for StripMine, which is developed by the same author. SignalBar publishes a short renewable lease and waits for StripMine's acknowledgement before its first event frame, restores the exact pre-event frame, then releases the lease so StripMine can resume automatically. When StripMine is not installed, the event proceeds after a brief timeout.
 - Keep the handoff fail-safe: the lease expires after a crash, and StripMine must still verify the restored LED signature before reclaiming the bar. Local arbitration and lifecycle tests pass; the physical transition still requires Steam Machine validation.
 
 ## 0.6.1 - 2026-09-24

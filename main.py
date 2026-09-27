@@ -28,10 +28,9 @@ class Plugin:
         current.mkdir(parents=True, exist_ok=True)
         if (current / "config.json").exists():
             return ""
-        # Prefer the immediately preceding beta identity, then fall back to
-        # the last public SignalBar installation. Decky gives each product
-        # name its own settings directory.
-        for legacy_name in ("CubeGlow", "cubeglow", "SignalBar", "signalbar"):
+        # Decky gives each product name its own settings directory. Import the
+        # former public SignalBar installation when GabeCubeAura starts empty.
+        for legacy_name in ("SignalBar", "signalbar"):
             legacy = current.parent / legacy_name
             source = legacy / "config.json"
             if legacy == current or not source.is_file():

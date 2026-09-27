@@ -15,14 +15,13 @@ Customization+ and artwork-driven game launch animations.
   the selected permanent display.
 - Standard Decky left-side settings navigation.
 - Full configuration export, import and reset.
-- Cooperative ownership with compatible StripMine releases.
+- Coordinated ownership with StripMine, developed by the same author.
 
-## Upgrade from SignalBar or CubeGlow
+## Upgrade from SignalBar
 
 Install `GabeCubeAura-v1.0.0.zip` through Decky Developer settings. On first
-launch, GabeCubeAura imports an existing CubeGlow test configuration when
-present, otherwise it imports SignalBar settings and artwork caches. The source
-configuration is copied once and is not deleted.
+launch, GabeCubeAura imports existing SignalBar settings and artwork caches. The
+source configuration is copied once and is not deleted.
 
 The Python `signalbar` namespace, saved setting keys and the StripMine handoff
 identity remain unchanged for compatibility.

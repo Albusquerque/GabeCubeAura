@@ -22,13 +22,13 @@ where changing them would break existing installations or historical records:
 
 - Python import namespace `signalbar`;
 - saved `signalbar_*` keys and the configuration schema;
-- legacy settings probes for CubeGlow and SignalBar;
+- legacy settings probes for SignalBar;
 - the `SignalBar` and `signalbar` StripMine ownership protocol;
 - historical release notes, tags, links and changelog entries;
 - stable legacy media filenames already referenced by earlier releases.
 
-GabeCubeAura copies an existing CubeGlow test configuration first, then a
-SignalBar configuration and artwork cache. It does not delete the source.
+GabeCubeAura copies an existing SignalBar configuration and artwork cache. It
+does not delete the source.
 
 ## Acceptance and verification
 
@@ -37,13 +37,13 @@ SignalBar configuration and artwork cache. It does not delete the source.
   Customization+ speed, representative pattern families, two- and three-colour
   launch palettes, timers, interruption handling, migration and StripMine
   handoff.
-- Backend suite: 132 passed.
+- Backend suite: 131 passed.
 - Frontend suite: 38 passed and 1 environment-specific test skipped.
 - TypeScript check, Rollup build, package tests and ZIP integrity passed.
 - The installable archive has one `GabeCubeAura/` root and includes the final
   documentation and README media.
 - Final archive: `GabeCubeAura-v1.0.0.zip`.
-- SHA-256: `67840338fb33f3f43b3e177c677874b4771e073e34d8c94d217869053526baa3`.
+- SHA-256: `adfd9235f4d6263307bf6573a7078dad477412521ff2cfe7df388ff46cda2d7c`.
 
 ## Public sites
 
@@ -51,7 +51,7 @@ SignalBar configuration and artwork cache. It does not delete the source.
 
 - Canonical repository: `Albusquerque/gabecubeaura-concept`.
 - Canonical page: `https://albusquerque.github.io/gabecubeaura-concept/`.
-- Published commit: `41e7490`.
+- Published commit: `edbbb08`.
 - Legacy repository: `Albusquerque/signalbar-concept`.
 - Legacy page: `https://albusquerque.github.io/signalbar-concept/`.
 - Legacy redirect commit: `4eb58f8`.

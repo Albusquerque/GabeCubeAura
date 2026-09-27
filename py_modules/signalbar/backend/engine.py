@@ -730,11 +730,11 @@ class Engine:
                 elif needs_handoff and not handoff_ready:
                     # Keep the current frame untouched until StripMine confirms
                     # it has stopped writing. A short timeout preserves normal
-                    # events when no compatible companion is installed.
+                    # events when StripMine is not installed.
                     event_was_active = False
                     event_preempted_valve = False
                     owner = self._owner
-                    suspension = "waiting for companion LED handoff"
+                    suspension = "waiting for StripMine LED handoff"
                 elif decision.frame is not None:
                     is_event = decision.provider.startswith(("event:", "controller:", "launch-artwork:"))
                     if is_event and not allowed:
