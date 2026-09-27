@@ -88,38 +88,17 @@ async function captureCustomization() {
   const folder = path.join(scratch, "customization-plus");
   const stage = page.locator(".stage-shell");
   await page.locator('[data-tab="customization"]').click();
-  let frame = 0;
-
-  await page.locator("#customPattern").selectOption("color-wipe");
+  await page.locator("#customPattern").selectOption("crescendo");
   await page.locator("#customPaletteCount").selectOption("2");
-  await fillHex(page, "#customHex1", "#FFD000");
-  await fillHex(page, "#customHex2", "#00C8FF");
-  await page.locator("#customBrightness").fill("220");
-  await page.locator("#customSpeed").fill("42");
+  await fillHex(page, "#customHex1", "#4FD1C5");
+  await fillHex(page, "#customHex2", "#63B3ED");
+  await page.locator("#customBrightness").fill("160");
+  await page.locator("#customSpeed").fill("25");
   await page.locator("#customDirection").selectOption("forward");
   await page.locator("#customPreview").click();
-  frame += await captureFor(stage, 2500, folder, frame);
+  await captureFor(stage, 7200, folder);
 
-  await page.locator("#customPattern").selectOption("event:achievement-supernova");
-  await page.locator("#customPaletteCount").selectOption("3");
-  await fillHex(page, "#customHex1", "#7F22EE");
-  await fillHex(page, "#customHex2", "#FF3C9D");
-  await fillHex(page, "#customHex3", "#00C8FF");
-  await page.locator("#customBrightness").fill("190");
-  await page.locator("#customSpeed").fill("68");
-  await page.locator("#customDirection").selectOption("reverse");
-  frame += await captureFor(stage, 3000, folder, frame);
-
-  await page.locator("#customPattern").selectOption("ripple");
-  await page.locator("#customPaletteCount").selectOption("2");
-  await fillHex(page, "#customHex1", "#FF7A18");
-  await fillHex(page, "#customHex2", "#30E3CA");
-  await page.locator("#customBrightness").fill("235");
-  await page.locator("#customSpeed").fill("82");
-  await page.locator("#customDirection").selectOption("forward");
-  await captureFor(stage, 2500, folder, frame);
-
-  encode("customization-plus", folder);
+  encode("customization-plus", folder, 72);
   await page.close();
 }
 

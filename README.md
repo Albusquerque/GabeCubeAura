@@ -61,11 +61,11 @@ Steam's native Patrol, Breathe, Rainbow, and Solid presets remain in Steam.
 Select **GabeCubeAura Off** to use them; GabeCubeAura does not present approximate
 lookalikes as if they were Valve's effects.
 
-The animation below moves through two- and three-colour examples at different
-speeds. It is captured from the browser simulator, so diffuser appearance may
-differ slightly from the physical Steam Machine.
+The animation below uses one restrained two-colour palette and a slower
+Crescendo loop. It is captured from the browser simulator, so diffuser
+appearance may differ slightly from the physical Steam Machine.
 
-![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](docs/media/animations/customization-plus.gif)
+![Customization+ running a slow Crescendo with a restrained two-colour blue palette](docs/media/animations/customization-plus.gif)
 
 ### Performance
 

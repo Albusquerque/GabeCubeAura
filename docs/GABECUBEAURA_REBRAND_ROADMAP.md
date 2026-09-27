@@ -93,6 +93,10 @@ colours and three deliberately paced patterns: Crescendo, Color wipe and
 Scanner. Each sequence runs to its four-second fade before the next one starts,
 avoiding the fast decorative effect of the earlier five-pattern capture.
 
+The Customization+ capture uses one slow Crescendo with a restrained teal and
+blue palette. Keeping a single pattern and two related colours makes the motion
+and the 17-pixel preview easier to read without a decorative garland effect.
+
 The captures remain explicitly described as browser simulations. Hardware
 validation is recorded separately as a physical observation by the project
 owner.
