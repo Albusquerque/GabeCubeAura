@@ -65,7 +65,7 @@ The independent **Game launches** page exposes:
 
 - opt-in toggle, off by default;
 - palette size: exactly 2 or 3 dominant colours;
-- duration: 3–45 seconds, default 8 seconds;
+- duration: from 3 to 45 seconds, default 8 seconds;
 - ten patterns: Crossed arpeggio, Two hands, Legato, Nocturne, Crescendo,
   Color wipe, Scanner, Theater chase, Twinkle, and Ripple;
 - an artwork source independent from the permanent Artwork display;

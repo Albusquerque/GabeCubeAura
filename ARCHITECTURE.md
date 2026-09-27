@@ -71,7 +71,7 @@ APIs, so controller-model compatibility requires device testing.
 
 ## Light-event arbitration
 
-All animations start from a dark frame, suspend the selected base for 1.2–4.85
+All animations start from a dark frame, suspend the selected base for 1.2 to 4.85
 seconds, and expire by monotonic time. A per-category variant is validated and
 persisted; queued effects retain the variant selected when they arrived, while
 a manual preview plays immediately without changing the saved choice. At most
@@ -121,7 +121,7 @@ complete backdrop.
 
 ## Performance layouts and orientation
 
-CPU and GPU full-bar modes map 0–100% load to 0–17 pixels. Mixed maps CPU to
+CPU and GPU full-bar modes map 0 to 100% load to 0 to 17 pixels. Mixed maps CPU to
 the left 8 pixels, keeps the centre pixel black, and maps GPU to the right 8.
 The user can make both halves grow left-to-right, or mirror the GPU half so the
 two signals grow from the outside edges toward the separator. Colour comes
@@ -135,7 +135,7 @@ optional `performance_always` setting also makes it eligible on the Steam home
 screen, without bypassing Vanilla Guard or changing the priority of countdowns
 and events.
 
-The persisted 0–6 **Extra dark LEDs** value is applied only to the physical
+The persisted 0 to 6 **Extra dark LEDs** value is applied only to the physical
 Performance frame; the Decky preview remains logical. Full CPU/GPU meters also
 receive the compensation. Mixed mode removes that number across both halves in
 total, favouring the fuller side and retaining one pixel for each active meter.
@@ -164,14 +164,14 @@ is registered only after the backend accepts the new AppID, because
 Steam may answer synchronously. Disabling parental display, leaving the game or
 switching AppID deletes that session's parental state, including its final alert.
 The lit portion occupies the logical left side, so its disappearing edge moves
-right-to-left. The shared persisted 0–6 physical dark-edge compensation counters
+right-to-left. The shared persisted 0 to 6 physical dark-edge compensation counters
 light-guide bloom in Countdown and Performance and defaults to two. Status
 exposes uncompensated logical frames plus logical/physical lit counts, while
 Renderer receives compensated frames. Countdown full bars remain 17 pixels and
 a running timer retains at least one physical pixel. Artwork bypasses the
 calibration.
-A rendering scale of zero uses the timer's initial duration. Fixed 1–4 hour
-scales map that remaining window to 17 pixels and clamp longer durations to a
+A rendering scale of zero uses the timer's initial duration. Fixed scales from
+one to four hours map that remaining window to 17 pixels and clamp longer durations to a
 full bar. Preview deliberately ignores the fixed scale.
 A brighter highlight circulates right-to-left. Below five minutes the palette
 becomes constant pure red; circulation remains the sole animation until the

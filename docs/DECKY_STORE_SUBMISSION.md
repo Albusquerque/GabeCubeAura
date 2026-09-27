@@ -40,18 +40,29 @@ remain safe when `valve-leds` is unavailable, but actual lighting requires the
 - Custom binary with statically linked dependencies: No
 - Required testing channel: SteamOS Stable or Beta
 
-## Validation still required before opening the pull request
+## Maintainer question
 
-1. Ask the Decky maintainers whether a Steam Machine-specific plugin is eligible
-   for the official Store and which hardware they want used for final testing.
-2. Have another person test the submitted build on SteamOS Stable or Beta and
-   leave the report on the Store pull request.
-3. Confirm that the tester can open every settings page and run local previews
-   without errors when `valve-leds` is absent.
-4. If requested by the maintainers, obtain a separate test on an official Steam
-   Machine to confirm physical output and restoration.
-5. Complete every personal declaration in Decky's current Plugin addition
+Send this question in the official Decky Discord before opening the pull request:
+
+> Hi, I am preparing GabeCubeAura for the Decky Plugin Store. It is designed for
+> the official Steam Machine's 17-pixel `valve-leds` light bar. The React and
+> Python interface remains safe when that hardware is absent, but physical light
+> output requires a Steam Machine. Is a hardware-specific plugin like this
+> eligible for the Store, and which hardware should be used for the required
+> third-party test?
+
+## Remaining validation and review steps
+
+1. Obtain the maintainers' answer about Steam Machine eligibility and testing.
+2. Complete every personal declaration in Decky's current Plugin addition
    template before submission.
+3. Open the Store pull request with the third-party testing box left unchecked.
+4. Have another person install the submitted build from the Testing Store on
+   SteamOS Stable or Beta and leave a report on the pull request.
+5. Confirm that the tester can open every settings page and run local previews
+   without errors when `valve-leds` is absent.
+6. If requested by the maintainers, obtain a separate test on an official Steam
+   Machine to confirm physical output and restoration.
 
 Community testing of two other plugin pull requests is optional, but completing
 it can improve review priority.

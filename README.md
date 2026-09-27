@@ -34,8 +34,8 @@ shows the active game image directly above its exact 17-colour sample.
 GabeCubeAura can play a one-shot launch sequence when a new
 Steam AppID starts. **Game launches is independent from Artwork display**: it
 has its own Hero/Header/Capsule source and colour cache, extracts either two or
-three dominant colours locally, offers ten patterns, and uses a 3–45 second
-visible timer. Short alerts pause that timer and the sequence resumes after the
+three dominant colours locally, offers ten patterns, and uses a visible timer
+adjustable from 3 to 45 seconds. Short alerts pause that timer and the sequence resumes after the
 alert.
 
 The animation above shows three separate AppIDs and the two- or three-colour
@@ -49,8 +49,8 @@ physical LED colour fidelity.
 ### Customization+
 
 Build a permanent Home or in-game display from one, two, or three exact
-opaque colours. Use the colour picker, Hex or RGB values, raw 34–255
-brightness, 1–100 speed for animated patterns, direction, and a live 17-LED
+opaque colours. Use the colour picker, Hex or RGB values, brightness from 34 to
+255, animation speed from 1 to 100, direction, and a live 17-LED
 preview. The 61 existing effect names are grouped by dynamism: Calm & ambient,
 Flowing, and Energetic. Alpha is intentionally absent because the LED hardware
 and GabeCubeAura settings use RGB, not transparency.

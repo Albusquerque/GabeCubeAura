@@ -15,7 +15,7 @@
 
 - Rebrand the former SignalBar product as **GabeCubeAura** across the Decky product, UI, logs, package, configuration export, documentation, GitHub repository and public concept pages. Internal setting keys and the StripMine protocol identity remain unchanged. A fresh GabeCubeAura settings directory copies an existing SignalBar configuration and artwork caches once.
 - Restore Decky's standard `SidebarNavigation` for detailed settings, with one simple left-hand tab per feature. Rename the untouched route **GabeCubeAura Off**; this route leaves permanent output to Steam while temporary layers remain available, while the master switch still disables every GabeCubeAura output.
-- Add **Customization+** as a permanent Home and In-game display with exact opaque Hex/RGB colours, one/two/three-colour palettes, raw 34–255 brightness, functional 1–100 speed, direction, live preview, and 61 unchanged effect names grouped by dynamism as Calm & ambient, Flowing, and Energetic.
+- Add **Customization+** as a permanent Home and In-game display with exact opaque Hex/RGB colours, one/two/three-colour palettes, raw 34 to 255 brightness, functional 1 to 100 speed, direction, live preview, and 61 unchanged effect names grouped by dynamism as Calm & ambient, Flowing, and Energetic.
 - Remove the misleading Alpha control from GabeCubeAura colour pickers: the LED backend stores three opaque RGB channels and never consumed transparency.
 - Keep Steam's Patrol, Breathe, Rainbow, and Solid presets in Steam rather than shipping lookalike animations without a public timing contract or preset API. Select GabeCubeAura Off to use the native Steam customization.
 - Add per-AppID Game Launch palettes, preserving both two- and three-colour versions, and include them in configuration export/import.
@@ -33,7 +33,7 @@
 - Add optional Game launch animations using a newly detected Steam AppID; loading SignalBar while a game is already running does not replay the launch.
 - Extract deterministic two- and three-colour dominant palettes locally in Steam's canvas with bounded OKLab clustering. Nothing is uploaded and SteamGridDB replacements already present in Steam's custom-grid folder are supported by the existing artwork discovery.
 - Add ten selectable 17-LED patterns: Crossed arpeggio, Two hands, Legato, Nocturne, Crescendo, Color wipe, Scanner, Theater chase, Twinkle, and Ripple.
-- Add an independent Hero/Header/Capsule colour source, a 3–45 second duration control, an exact palette-size choice, the detected-palette preview, and a manual launch preview.
+- Add an independent Hero/Header/Capsule colour source, a duration control from 3 to 45 seconds, an exact palette-size choice, the detected-palette preview, and a manual launch preview.
 - Pause the visible launch timer for short alerts and resume afterwards. Critical countdowns and native writes cancel it; regular countdowns wait underneath it. Pending launches expire after 12 seconds.
 - Keep launch palettes in a dedicated cache, separate from the permanent Artwork display, and give Game launches its own StripMine ownership preference.
 - This build is packaged locally only. It has no tag or public GitHub release, and physical colour/timing quality still needs Steam Machine validation.
@@ -383,7 +383,7 @@ Not published. Includes fixes for the user's beta.3 hardware feedback.
 - Add per-device diagnostics: list percentage, SteamUI percentage, latest battery
   event, chosen percentage, source and event age. No raw device serial is shown.
 - Add colour pickers for healthy, medium, low and charging/connection colours.
-  Add 10–100% controller-only brightness, default 65%, with saturated defaults
+  Add controller-only brightness from 10 to 100%, default 65%, with saturated defaults
   to reduce the diffuser's pale white-green glow. Single/two-player gauges,
   controller animations and their previews share these settings.
 - Collect CPU/GPU metrics every 0.5 seconds independently of Display and LED
@@ -455,7 +455,7 @@ a verified fix; beta.3 replaces this outdated callback path.
 - Detect controller-list, battery, and controller-state changes from Steam's
   frontend callbacks; serialize state updates to avoid stale asynchronous
   snapshots replacing newer readings.
-- Warn once when a known battery crosses a configurable 5–30% threshold, or
+- Warn once when a known battery crosses a configurable threshold from 5 to 30%, or
   reaches Steam's lowest coarse level, and re-arm after charging. Never present
   a coarse battery level as a fabricated exact percentage.
 - Keep Steam Families' final five minutes protected. Low-battery alerts have
@@ -622,7 +622,7 @@ a verified fix; beta.3 replaces this outdated callback path.
   countdown, then return immediately to the selected base provider at zero.
 - Add optical dark-edge compensation for the Steam Machine's diffused light
   guide while retaining all 17 pixels at a full countdown.
-- Make that physical compensation persistent and adjustable from 0–6 under
+- Make that physical compensation persistent and adjustable from 0 to 6 under
   Debug. The Decky preview retains the logical count: 12 shown with a value of
   3 writes 9 lit LEDs to the hardware. It applies only to countdown frames,
   never Artwork or Performance.
@@ -636,7 +636,7 @@ a verified fix; beta.3 replaces this outdated callback path.
   selected Artwork or Performance display when it ends.
 - Added Steam Families remaining-time support through SteamUI's parental
   playtime callback, with an independent enable/disable setting.
-- Added a free 5–240 minute personal timer that continues while the Decky
+- Added a free personal timer from 5 to 240 minutes that continues while the Decky
   panel is closed, plus a non-destructive 15-second preview.
 - Added five starting colours, a shrinking right edge and a right-to-left
   travelling highlight. The signal turns amber below 15 minutes, then pure red

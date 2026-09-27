@@ -46,7 +46,7 @@ display. Its page is ordered as follows:
 2. Hero, Header, or Capsule artwork source;
 3. artwork palette or a palette saved for the current game;
 4. two or three colours;
-5. pattern and 3–45 second timer;
+5. pattern and timer from 3 to 45 seconds;
 6. the first Preview control;
 7. live 17-LED frame and remaining time, refreshed every 100 ms while this page
    is open;
@@ -73,7 +73,7 @@ Controls:
 
 - one, two, or three precise colours;
 - opaque colour picker without a misleading Alpha control, exact hexadecimal
-  entry, and RGB 0–255 sliders;
+  entry, and RGB sliders from 0 to 255;
 - raw output brightness from 34 to 255 in increments of one; values below 34
   are raised to 34 because they switch the physical bar off;
 - speed from 1 to 100 for every animated pattern (hidden for Steady because a

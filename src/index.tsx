@@ -769,7 +769,7 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
         showValue value={status.weather_shadow_cutoff}
         onChange={async (value) => setStatus(await setSetting("weather_shadow_cutoff", value))} /></PanelSectionRow>
       <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .72 }}>
-        Cutoff turns a pixel fully off when its strongest RGB channel is at or below this value (0–255 scale). It does not dim the remaining pixels further. A high cutoff can make transitions more abrupt. These are brightness controls, not measured hardware colour calibration.
+        Cutoff turns a pixel fully off when its strongest RGB channel is at or below this value (scale from 0 to 255). It does not dim the remaining pixels further. A high cutoff can make transitions more abrupt. These are brightness controls, not measured hardware colour calibration.
       </div></PanelSectionRow>
       <PanelSectionRow><ButtonItem label="Preview night colours"
         description="Play the selected moon-and-stars loop to check the white glow on the physical bar."
