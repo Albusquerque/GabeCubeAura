@@ -16,25 +16,6 @@ SignalBar settings and artwork caches. Existing users keep their configuration.
 
 ## Your everyday display
 
-### Customization+
-
-Build a permanent Home or in-game display from one, two, or three exact
-opaque colours. Use the colour picker, Hex or RGB values, raw 34–255
-brightness, 1–100 speed for animated patterns, direction, and a live 17-LED
-preview. The 61 existing effect names are grouped by dynamism: Calm & ambient,
-Flowing, and Energetic. Alpha is intentionally absent because the LED hardware
-and GabeCubeAura settings use RGB, not transparency.
-
-Steam's native Patrol, Breathe, Rainbow, and Solid presets remain in Steam.
-Select **GabeCubeAura Off** to use them; GabeCubeAura does not present approximate
-lookalikes as if they were Valve's effects.
-
-The animation below moves through two- and three-colour examples at different
-speeds. It is captured from the browser simulator, so diffuser appearance may
-differ slightly from the physical Steam Machine.
-
-![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](assets/readme-gifs/customization-plus.gif)
-
 ### Artwork
 
 Carry the current game's colours onto the light bar. Choose Library Hero,
@@ -64,6 +45,25 @@ Concept Lab, not proof of physical LED colour fidelity.
 ![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](assets/readme-gifs/game-launch-palettes.gif)
 
 ![Balatro launch animation cycling through Crossed arpeggio, Legato, Scanner, Theater chase, and Ripple](assets/readme-gifs/game-launch-patterns.gif)
+
+### Customization+
+
+Build a permanent Home or in-game display from one, two, or three exact
+opaque colours. Use the colour picker, Hex or RGB values, raw 34–255
+brightness, 1–100 speed for animated patterns, direction, and a live 17-LED
+preview. The 61 existing effect names are grouped by dynamism: Calm & ambient,
+Flowing, and Energetic. Alpha is intentionally absent because the LED hardware
+and GabeCubeAura settings use RGB, not transparency.
+
+Steam's native Patrol, Breathe, Rainbow, and Solid presets remain in Steam.
+Select **GabeCubeAura Off** to use them; GabeCubeAura does not present approximate
+lookalikes as if they were Valve's effects.
+
+The animation below moves through two- and three-colour examples at different
+speeds. It is captured from the browser simulator, so diffuser appearance may
+differ slightly from the physical Steam Machine.
+
+![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](assets/readme-gifs/customization-plus.gif)
 
 ### Performance
 
