@@ -1,4 +1,4 @@
-"""Human-retrievable exports of SignalBar's saved configuration."""
+"""Human-retrievable exports of GabeCubeAura's saved configuration."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 
-EXPORT_FILENAME = "SignalBar-configuration.json"
+EXPORT_FILENAME = "GabeCubeAura-configuration.json"
 MAX_IMPORT_BYTES = 1024 * 1024
 
 
@@ -34,6 +34,7 @@ def build_configuration_export(settings, version: str, current_game=None, genera
     values = deepcopy(settings.all())
     display_profiles = values.pop("display_profiles", {})
     artwork_profiles = values.pop("artwork_profiles", {})
+    launch_artwork_profiles = values.pop("launch_artwork_profiles", {})
 
     game = None
     raw_game = current_game if isinstance(current_game, dict) else {}
@@ -47,18 +48,20 @@ def build_configuration_export(settings, version: str, current_game=None, genera
             "title": str(raw_game.get("title", "")),
             "display": settings.display_for(appid),
             "artwork": settings.artwork_for(appid),
+            "launch_artwork": settings.launch_artwork_for(appid),
         }
 
     timestamp = generated_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     return {
         "schema_version": 1,
-        "signalbar_version": version,
+        "gabecubeaura_version": version,
         "exported_at": timestamp,
         "configuration": {
             "global": values,
             "profiles": {
                 "display_by_appid": display_profiles,
                 "artwork_by_appid": artwork_profiles,
+                "launch_artwork_by_appid": launch_artwork_profiles,
             },
             "current_game": game,
         },
@@ -83,7 +86,7 @@ def read_configuration_import(path: str):
         raise ValueError("Configuration is not readable JSON") from error
     if not isinstance(payload, dict) or type(payload.get("schema_version")) is not int \
             or payload["schema_version"] != 1:
-        raise ValueError("Unsupported SignalBar configuration schema")
+        raise ValueError("Unsupported GabeCubeAura configuration schema")
     configuration = payload.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("Configuration section is missing")
@@ -93,12 +96,13 @@ def read_configuration_import(path: str):
         raise ValueError("Global settings or game profiles are missing")
     display = profiles.get("display_by_appid")
     artwork = profiles.get("artwork_by_appid")
-    if not isinstance(display, dict) or not isinstance(artwork, dict):
+    launch_artwork = profiles.get("launch_artwork_by_appid", {})
+    if not isinstance(display, dict) or not isinstance(artwork, dict) or not isinstance(launch_artwork, dict):
         raise ValueError("Game profiles must be objects")
-    if len(display) > 512 or len(artwork) > 512:
+    if len(display) > 512 or len(artwork) > 512 or len(launch_artwork) > 512:
         raise ValueError("Too many game profiles in configuration")
     # current_game, version and export date are informational, not settings.
-    return global_values, display, artwork
+    return global_values, display, artwork, launch_artwork
 
 
 def write_configuration_export(settings, path: Path, version: str, current_game=None):

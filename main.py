@@ -1,7 +1,9 @@
-"""Decky backend entry point for SignalBar."""
+"""Decky backend entry point for GabeCubeAura."""
 
 import asyncio
 import os
+from pathlib import Path
+import shutil
 import sys
 
 import decky
@@ -19,7 +21,30 @@ from signalbar.providers.weather import search_cities  # noqa: E402
 
 
 class Plugin:
+    @staticmethod
+    def _migrate_legacy_settings(settings_directory: str):
+        """Copy legacy settings once when GabeCubeAura is installed as a new plugin."""
+        current = Path(settings_directory)
+        current.mkdir(parents=True, exist_ok=True)
+        if (current / "config.json").exists():
+            return ""
+        # Prefer the immediately preceding beta identity, then fall back to
+        # the last public SignalBar installation. Decky gives each product
+        # name its own settings directory.
+        for legacy_name in ("CubeGlow", "cubeglow", "SignalBar", "signalbar"):
+            legacy = current.parent / legacy_name
+            source = legacy / "config.json"
+            if legacy == current or not source.is_file():
+                continue
+            for filename in ("config.json", "artwork-cache.json", "launch-artwork-cache.json"):
+                candidate = legacy / filename
+                if candidate.is_file() and not (current / filename).exists():
+                    shutil.copy2(candidate, current / filename)
+            return legacy_name
+        return ""
+
     async def _main(self):
+        migrated_from = self._migrate_legacy_settings(decky.DECKY_PLUGIN_SETTINGS_DIR)
         settings_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
         cache_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "artwork-cache.json")
         self.engine = Engine(SettingsStore(settings_path), cache_path, decky.logger)
@@ -28,11 +53,13 @@ class Plugin:
             os.environ.get("DECKY_USER_HOME"),
         )
         self.engine.start()
-        decky.logger.info("[SignalBar] loaded")
+        if migrated_from:
+            decky.logger.info(f"[GabeCubeAura] imported legacy {migrated_from} settings")
+        decky.logger.info("[GabeCubeAura] loaded")
 
     async def _unload(self):
         self.engine.stop()
-        decky.logger.info("[SignalBar] unloaded; LED ownership released")
+        decky.logger.info("[GabeCubeAura] unloaded; LED ownership released")
 
     async def _uninstall(self):
         self.engine.stop()
@@ -50,8 +77,10 @@ class Plugin:
         )
 
     async def import_configuration(self, path: str):
-        global_values, display_profiles, artwork_profiles = read_configuration_import(path)
-        self.engine.import_configuration(global_values, display_profiles, artwork_profiles)
+        global_values, display_profiles, artwork_profiles, launch_artwork_profiles = read_configuration_import(path)
+        self.engine.import_configuration(
+            global_values, display_profiles, artwork_profiles, launch_artwork_profiles,
+        )
         return self.engine.status()
 
     async def reset_configuration(self):
@@ -63,7 +92,7 @@ class Plugin:
         return self.engine.status()
 
     async def set_game_display(self, appid: int, mode: str):
-        self.engine.settings.update_display(appid, mode)
+        self.engine.update_display(appid, mode)
         return self.engine.status()
 
     async def set_setting(self, key: str, value):
@@ -81,22 +110,46 @@ class Plugin:
         self.engine.update_artwork_settings(appid, changes)
         return self.engine.status()
 
-    async def game_changed(self, appid: int = 0, title: str = ""):
-        self.engine.set_game(appid, title)
+    async def set_launch_artwork_setting(self, appid: int, key: str, value):
+        changes = {}
+        if key == "palette_mode":
+            changes["palette_mode"] = value
+        elif key == "custom_palettes":
+            changes["custom_palettes"] = value
+        self.engine.update_launch_artwork_settings(appid, changes)
         return self.engine.status()
 
-    async def get_artwork(self, appid: int = 0, source: str = "hero"):
+    async def game_changed(self, appid: int = 0, title: str = "", launch: bool = False):
+        self.engine.set_game(appid, title, launch)
+        return self.engine.status()
+
+    async def get_artwork(self, appid: int = 0, source: str = "hero", purpose: str = "artwork"):
         result = get_library_artwork(appid, source)
         if result.get("found"):
-            result["cached"] = self.engine.prepare_artwork(
+            prepare = (
+                self.engine.prepare_launch_artwork
+                if purpose == "launch" else self.engine.prepare_artwork
+            )
+            result["cached"] = prepare(
                 result["appid"], result["fingerprint"], result["filename"], result["source"]
             )
         return result
 
     async def submit_artwork(self, appid: int, fingerprint: str, colors, sample_y: float,
-                             filename: str = "", source: str = "hero"):
-        self.engine.submit_artwork(appid, fingerprint, colors, sample_y, filename, source)
+                             dominant_palettes, filename: str = "", source: str = "hero",
+                             purpose: str = "artwork"):
+        submit = (
+            self.engine.submit_launch_artwork
+            if purpose == "launch" else self.engine.submit_artwork
+        )
+        submit(appid, fingerprint, colors, sample_y, dominant_palettes, filename, source)
         return self.engine.status()
+
+    async def preview_launch_artwork(self):
+        return self.engine.preview_launch_artwork()
+
+    async def preview_customization(self):
+        return self.engine.preview_customization()
 
     async def set_steam_activity(self, active: bool, reason: str = "Steam event"):
         self.engine.set_steam_activity(active, reason)
@@ -146,7 +199,7 @@ class Plugin:
             cities = await asyncio.get_running_loop().run_in_executor(None, search_cities, query)
             return {"results": cities, "error": ""}
         except Exception as error:
-            decky.logger.warning(f"[SignalBar] city search failed: {type(error).__name__}: {error}")
+            decky.logger.warning(f"[GabeCubeAura] city search failed: {type(error).__name__}: {error}")
             return {"results": [], "error": f"{type(error).__name__}: {error}"[:180]}
 
     async def preview_weather(self, condition: str, variant: int):

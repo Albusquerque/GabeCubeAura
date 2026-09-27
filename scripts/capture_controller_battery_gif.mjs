@@ -8,7 +8,7 @@ import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const source = await fs.readFile(path.join(root, "assets/controller-motion-demo.html"), "utf8");
 const output = path.join(root, "assets/readme-gifs/controller-battery.gif");
-const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "signalbar-controller-gif-"));
+const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "gabecubeaura-controller-gif-"));
 const browser = await chromium.launch({ headless: true });
 const interval = 150;
 

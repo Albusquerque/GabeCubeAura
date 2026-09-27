@@ -60,8 +60,8 @@
     @media(max-width:390px){#sb-motion-lab .sb-stage{height:315px}#sb-motion-lab .sb-machine{width:min(78%,280px);margin-bottom:54px}#sb-motion-lab .sb-cube{height:206px}#sb-motion-lab .sb-fascia{height:48px}#sb-motion-lab .sb-logic{gap:2px}#sb-motion-lab .sb-stage-head{left:8px;right:8px;top:8px}}
     @media(prefers-reduced-motion:reduce){#sb-motion-lab .sb-light,#sb-motion-lab .sb-bloom,#sb-motion-lab .sb-reflection{transition:none}}
   </style>
-  <section class="sb-shell" aria-label="SignalBar controller signal concepts">
-    <header class="sb-top"><strong class="sb-brand">SignalBar</strong><span class="sb-kicker">Controller motion lab · 17 LEDs · concept</span></header>
+  <section class="sb-shell" aria-label="GabeCubeAura controller signal concepts">
+    <header class="sb-top"><strong class="sb-brand">GabeCubeAura</strong><span class="sb-kicker">Controller motion lab · 17 LEDs · concept</span></header>
     <nav class="sb-scenes" aria-label="Controller situations">
       <button type="button" class="sb-tab cursor-interaction" data-scene="connect" aria-pressed="false">Connect</button>
       <button type="button" class="sb-tab cursor-interaction" data-scene="gauge" aria-pressed="false">Battery gauge</button>
@@ -193,8 +193,8 @@
         q('.sb-bloom').style.opacity=String(state.glow);
         leds.forEach((element,i)=>{element.style.background=frameColors[i]===OFF?'#303e48':frameColors[i]});
       }
-      function save(){if(globalThis.openai?.setWidgetState)globalThis.openai.setWidgetState({modelContent:{scene:state.scene,variant:state.variant,battery:state.battery,where:state.where}}).catch(()=>{})}
-      const saved=globalThis.openai?.widgetState?.modelContent;
+      function save(){if(globalThis.gabecubeaura?.setWidgetState)globalThis.gabecubeaura.setWidgetState({modelContent:{scene:state.scene,variant:state.variant,battery:state.battery,where:state.where}}).catch(()=>{})}
+      const saved=globalThis.gabecubeaura?.widgetState?.modelContent;
       if(saved&&typeof saved==='object'){
         if(content[saved.scene])state.scene=saved.scene;
         if(Number.isInteger(saved.variant)&&saved.variant>=0&&saved.variant<=2)state.variant=saved.variant;

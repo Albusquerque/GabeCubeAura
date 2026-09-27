@@ -17,7 +17,10 @@ const selectedLabel = (options: readonly { data: string; label: string }[], valu
 
 const artworkSource = { hero: "Library Hero", header: "Library Header", capsule: "Library Capsule" };
 const artworkRow = { auto: "Auto", center: "Centre", lower: "Lower", manual: "Manual" };
-const displayMode = { artwork: "Artwork", performance: "Performance", events: "Signals only", disabled: "Disabled" };
+const displayMode = {
+  artwork: "Artwork", performance: "Performance", customization: "Customization+", steam: "GabeCubeAura Off",
+  weather: "Weather", controller: "Controller status", events: "Signals only", disabled: "Disabled",
+};
 const response = { responsive: "Responsive", balanced: "Balanced", smooth: "Smooth" };
 const palette = {
   thermal: "Cyan → amber → red", classic: "Green → yellow → red",
@@ -42,10 +45,17 @@ export function buildSettingsSnapshot(status: Status): SettingsSnapshotSection[]
     {
       title: "Display",
       lines: [
-        `Default ${displayMode[status.default_mode]} · Active ${displayMode[status.mode]}`,
+        `Home ${displayMode[status.home_display]} · In game ${displayMode[status.game_display]} · Current ${displayMode[status.current_display]} · Master ${onOff(status.signalbar_enabled)}`,
         gameRunning
-          ? `Game ${status.game.title || "Running game"} · Override ${status.display_override === "inherit" ? "Use default" : displayMode[status.display_override]}`
+          ? `Game ${status.game.title || "Running game"} · Override ${status.display_override === "inherit" ? "Use in-game default" : displayMode[status.display_override]}`
           : "Home · Game override applies when a game runs",
+      ],
+    },
+    {
+      title: "Customization+",
+      lines: [
+        `Pattern ${status.customization_pattern} · Palette ${status.customization_colour_count} colour${status.customization_colour_count === 1 ? "" : "s"}`,
+        `Colours ${[status.customization_colour_1, status.customization_colour_2, status.customization_colour_3].slice(0, status.customization_colour_count).map(rgbHex).join(" / ")} · Brightness ${status.customization_brightness}/255 · Speed ${status.customization_speed}/100 · ${status.customization_direction}`,
       ],
     },
     {
@@ -63,6 +73,13 @@ export function buildSettingsSnapshot(status: Status): SettingsSnapshotSection[]
         `Meter ${status.performance_metric === "mixed" ? "CPU + GPU" : status.performance_metric.toUpperCase()} · Response ${response[status.performance_smoothing]} · Home ${onOff(status.performance_always)}`,
         `Fill ${status.mixed_direction === "mirrored" ? "Mirrored" : "Both left to right"} (saved) · Palette ${palette[status.temperature_palette]}`,
         `Cool ${status.cool_temp_c}°C · Hot ${status.hot_temp_c}°C · saved custom ${rgbHex(status.temperature_custom_cool)} / ${rgbHex(status.temperature_custom_middle)} / ${rgbHex(status.temperature_custom_hot)}`,
+      ],
+    },
+    {
+      title: "Game launches",
+      lines: [
+        `Master ${onOff(status.launch_artwork_animation_enabled)} · ${status.launch_artwork_pattern} · ${status.launch_artwork_duration_seconds} s`,
+        `Source ${source(status.launch_artwork_source)} · Palette ${status.launch_artwork_colour_count} colours · ${status.launch_artwork_palette_mode}`,
       ],
     },
     {

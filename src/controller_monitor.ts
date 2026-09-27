@@ -111,7 +111,7 @@ export class ControllerMonitor {
     });
     this.delivery = pending.catch(async () => {
       this.state.phase = "error";
-      this.state.error = "Controller data could not reach the SignalBar backend; retrying";
+      this.state.error = "Controller data could not reach the GabeCubeAura backend; retrying";
       await this.diagnose();
     });
     return pending;
@@ -237,7 +237,7 @@ export class ControllerMonitor {
         const ui = storeItems.get(item.id);
         this.storePercent.set(index, ui?.percent ?? null);
         // Read the same state Steam's header displays, including notifications
-        // delivered before SignalBar loaded. Never call its Init or mutate it.
+        // delivered before GabeCubeAura loaded. Never call its Init or mutate it.
         // Once our live subscription has a reading, neither startup snapshot
         // may overwrite it. Keep SteamUI as a seed, not a competing writer.
         if (ui?.percent != null && !update) {

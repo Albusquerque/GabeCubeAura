@@ -29,6 +29,51 @@ class Metrics:
 
 
 class FeedbackTests(unittest.TestCase):
+    def test_home_and_game_displays_route_independently_with_game_overrides(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = SettingsStore(str(Path(folder) / "settings.json"))
+            store.update({
+                "weather_location": {
+                    "name": "Paris", "country": "France",
+                    "latitude": 48.8566, "longitude": 2.3522,
+                },
+                "home_display": "weather",
+                "game_display": "performance",
+            })
+            self.assertEqual(store.display_for(0)["selected"], "weather")
+            self.assertEqual(store.display_for(0)["mode"], "events")
+            self.assertEqual(store.display_for(42)["selected"], "performance")
+            self.assertEqual(store.display_for(42)["mode"], "performance")
+            engine = Engine(store, str(Path(folder) / "artwork-cache.json"))
+            self.assertEqual(engine.status()["current_display"], "weather")
+            engine.set_game(42, "Test")
+            self.assertEqual(engine.status()["current_display"], "performance")
+            store.update_display(42, "artwork")
+            self.assertEqual(store.display_for(42)["selected"], "artwork")
+            self.assertEqual(store.display_for(99)["selected"], "performance")
+            store.update({"signalbar_enabled": False})
+            self.assertEqual(store.display_for(0)["mode"], "disabled")
+            self.assertEqual(store.display_for(42)["mode"], "disabled")
+
+    def test_game_weather_override_keeps_weather_service_enabled(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = SettingsStore(str(Path(folder) / "settings.json"))
+            engine = Engine(store, str(Path(folder) / "artwork-cache.json"))
+            store.update({
+                "weather_location": {
+                    "name": "Paris", "country": "France",
+                    "latitude": 48.8566, "longitude": 2.3522,
+                },
+            })
+            configure_calls = []
+            engine.weather.configure = lambda *args: configure_calls.append(args)
+            engine.update_display(42, "weather")
+            self.assertEqual(store.all()["weather_display"], "game")
+            self.assertEqual(configure_calls[-1][1], "game")
+            engine.update_display(42, "inherit")
+            self.assertEqual(store.all()["weather_display"], "off")
+            self.assertEqual(configure_calls[-1][1], "off")
+
     def test_sampling_starts_without_performance_and_continues_after_switching_back(self):
         clock = ManualClock(100)
         metrics = Metrics(clock)
@@ -77,7 +122,9 @@ class FeedbackTests(unittest.TestCase):
                     time.sleep(.02)
                 self.assertGreaterEqual(metrics.calls, 2)
                 state = engine.status()
-                self.assertEqual(state["mode"], "artwork")
+                self.assertEqual(state["mode"], "events")
+                self.assertEqual(state["current_display"], "controller")
+                self.assertEqual(state["game_display"], "artwork")
                 self.assertIsNotNone(state["performance"]["cpu_load"])
                 self.assertEqual(len(attempts), 1)
                 before = metrics.calls
@@ -117,7 +164,7 @@ class FeedbackTests(unittest.TestCase):
             restored.update({"mode": "disabled"})
             self.assertEqual(restored.display_for(42)["mode"], "disabled")
             restored.update({"mode": "events"})
-            self.assertEqual(restored.display_for(42)["mode"], "events")
+            self.assertEqual(restored.display_for(42)["mode"], "performance")
             restored.update({"mode": "performance"})
             self.assertEqual(restored.display_for(99)["mode"], "artwork")
             restored.update_display(99, "inherit")
@@ -192,7 +239,7 @@ class FeedbackTests(unittest.TestCase):
             engine.arbiter.choose = record
             engine.start()
             try:
-                for appid, mode in ((42, "performance"), (99, "performance"), (0, "performance")):
+                for appid, mode in ((42, "performance"), (99, "performance"), (0, "events")):
                     engine.set_game(appid)
                     deadline = time.monotonic() + 2
                     while (appid, mode) not in seen and time.monotonic() < deadline:

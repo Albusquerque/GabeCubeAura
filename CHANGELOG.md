@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.0.0 - 2026-09-27
+
+- Rebrand the former SignalBar product as **GabeCubeAura** across the Decky product, UI, logs, package, configuration export, documentation, GitHub repository and public concept pages. Compatible internal setting and StripMine identities remain unchanged. A fresh GabeCubeAura settings directory prefers an existing CubeGlow configuration and artwork caches, then falls back to SignalBar, and copies them only once.
+- Restore Decky's standard `SidebarNavigation` for detailed settings, with one simple left-hand tab per feature. Rename the untouched route **GabeCubeAura Off**; this route leaves permanent output to Steam while temporary layers remain available, while the master switch still disables every GabeCubeAura output.
+- Add **Customization+** as a permanent Home and In-game display with exact opaque Hex/RGB colours, one/two/three-colour palettes, raw 34–255 brightness, functional 1–100 speed, direction, live preview, and 61 unchanged effect names grouped by dynamism as Calm & ambient, Flowing, and Energetic.
+- Remove the misleading Alpha control from GabeCubeAura colour pickers: the LED backend stores three opaque RGB channels and never consumed transparency.
+- Keep Steam's Patrol, Breathe, Rainbow, and Solid presets in Steam rather than shipping lookalike animations without a public timing contract or preset API. Select GabeCubeAura Off to use the native Steam customization.
+- Add per-AppID Game Launch palettes, preserving both two- and three-colour versions, and include them in configuration export/import.
+- Make all ten Game Launch patterns palette-locked: fades may dim a selected hue toward black, but overlaps and Legato no longer create unselected intermediate hues.
+- Remove the inert dominant-palette strip that looked like an animation above Game Launch Preview. Keep the real 17-LED animated bar with the first Preview control and refresh it every 100 ms while the page is open.
+- Replace Replay with a second **Preview** control below the artwork, without another LED bar beneath it. The image remains focusable and the final button gives Steam gamepad navigation a natural target for scrolling through the complete image.
+- Add three reproducible README animations for Customization+, per-AppID artwork palette extraction, and representative Game Launch patterns. They are generated from the Concept Lab with `npm run media:release` and remain explicitly labelled as browser simulations.
+- Restructure the README draft so Artwork and Game launch animations are separate concepts, with dedicated visual explanations for two- and three-colour palettes, speed, and launch patterns.
+- Add a repository, package, documentation, GitHub Pages, annex-site, compatibility, publication, and rollback roadmap for completing the GabeCubeAura rebrand without breaking SignalBar-era settings or links.
+- Publish the manually verified `GabeCubeAura-v1.0.0.zip` with `SHA256SUMS`. No GitHub Actions workflow is used.
+
+## 0.8.0 - LOCAL BETA - 2026-09-27
+
+- Split permanent displays from temporary layers. Home and In-game displays are now routed independently, with optional per-game overrides; Game launches, Playtime, Light events, and Controller alerts can run over them without forcing Artwork mode.
+- Add optional Game launch animations using a newly detected Steam AppID; loading SignalBar while a game is already running does not replay the launch.
+- Extract deterministic two- and three-colour dominant palettes locally in Steam's canvas with bounded OKLab clustering. Nothing is uploaded and SteamGridDB replacements already present in Steam's custom-grid folder are supported by the existing artwork discovery.
+- Add ten selectable 17-LED patterns: Crossed arpeggio, Two hands, Legato, Nocturne, Crescendo, Color wipe, Scanner, Theater chase, Twinkle, and Ripple.
+- Add an independent Hero/Header/Capsule colour source, a 3–45 second duration control, an exact palette-size choice, the detected-palette preview, and a manual launch preview.
+- Pause the visible launch timer for short alerts and resume afterwards. Critical countdowns and native writes cancel it; regular countdowns wait underneath it. Pending launches expire after 12 seconds.
+- Keep launch palettes in a dedicated cache, separate from the permanent Artwork display, and give Game launches its own StripMine ownership preference.
+- This build is packaged locally only. It has no tag or public GitHub release, and physical colour/timing quality still needs Steam Machine validation.
+
 ## 0.7.1 - 2026-09-27
 
 - Rename the user-facing **Light Events only** display to **Signals only** and keep controller battery gauges, continuous charging, brief controller alerts, and playtime countdowns active there. Artwork, Performance, and Weather stay dormant; when no useful signal is active, the bar is released.

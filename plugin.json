@@ -1,6 +1,6 @@
 {
-  "name": "SignalBar",
-  "author": "SignalBar contributors",
+  "name": "GabeCubeAura",
+  "author": "Albusquerque",
   "flags": ["root"],
   "api_version": 1,
   "publish": {
@@ -8,4 +8,3 @@
     "description": "Smart status lighting for the official Steam Machine light bar."
   }
 }
-

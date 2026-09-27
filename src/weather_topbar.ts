@@ -10,7 +10,7 @@ import { getStatus } from "./api";
 import type { WeatherCondition } from "./types";
 import { weatherTopBarReading } from "./weather_topbar_model";
 
-const ROOT_ID = "signalbar-weather-topbar";
+const ROOT_ID = "gabecubeaura-weather-topbar";
 const REFRESH_MS = 5_000;
 const CLOCK = /^\d{1,2}:\d{2}(?:\s*[AP]M)?$/i;
 

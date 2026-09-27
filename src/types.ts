@@ -1,6 +1,11 @@
-export type Mode = "artwork" | "performance" | "events" | "disabled";
+export type Mode = "artwork" | "performance" | "customization" | "events" | "disabled";
+export type HomeDisplay = "steam" | "customization" | "performance" | "weather" | "controller";
+export type GameDisplay = "steam" | "customization" | "artwork" | "performance" | "weather" | "controller";
 export type ArtworkMode = "auto" | "center" | "lower" | "manual";
 export type ArtworkSource = "hero" | "header" | "capsule";
+export type LaunchArtworkPattern = "arpege-crossed" | "two-hands" | "legato" | "nocturne" | "crescendo"
+  | "color-wipe" | "scanner" | "theater-chase" | "twinkle" | "ripple";
+export type CustomizationPattern = string;
 export type PerformanceMetric = "cpu" | "gpu" | "mixed";
 export type PerformanceSmoothing = "responsive" | "balanced" | "smooth";
 export type MixedDirection = "same" | "mirrored";
@@ -15,13 +20,17 @@ export interface Status {
   version: string;
   available: boolean;
   active: boolean;
-  owner: "Valve" | "SignalBar";
+  owner: "Valve" | "GabeCubeAura";
   provider: string;
   suspension_reason: string;
   error: string;
   mode: Mode;
-  default_mode: Mode;
-  display_override: "inherit" | "artwork" | "performance";
+  default_mode: HomeDisplay | GameDisplay;
+  display_override: "inherit" | GameDisplay;
+  signalbar_enabled: boolean;
+  home_display: HomeDisplay;
+  game_display: GameDisplay;
+  current_display: HomeDisplay | GameDisplay;
   performance_metric: PerformanceMetric;
   performance_smoothing: PerformanceSmoothing;
   performance_always: boolean;
@@ -37,6 +46,21 @@ export interface Status {
   artwork_default_mode: ArtworkMode;
   artwork_default_manual_y: number;
   artwork_default_source: ArtworkSource;
+  launch_artwork_animation_enabled: boolean;
+  launch_artwork_pattern: LaunchArtworkPattern;
+  launch_artwork_colour_count: 2 | 3;
+  launch_artwork_duration_seconds: number;
+  launch_artwork_source: ArtworkSource;
+  launch_artwork_palette_mode: "artwork" | "custom";
+  launch_artwork_custom_palettes: { "2": [RGB, RGB]; "3": [RGB, RGB, RGB] };
+  customization_pattern: CustomizationPattern;
+  customization_colour_count: 1 | 2 | 3;
+  customization_colour_1: RGB;
+  customization_colour_2: RGB;
+  customization_colour_3: RGB;
+  customization_brightness: number;
+  customization_speed: number;
+  customization_direction: "forward" | "reverse";
   cool_temp_c: number;
   hot_temp_c: number;
   reverse_led_order: boolean;
@@ -86,6 +110,8 @@ export interface Status {
   stripmine_priority_weather: CompanionPriority;
   stripmine_priority_controller: CompanionPriority;
   stripmine_priority_light_events: CompanionPriority;
+  stripmine_priority_game_launches: CompanionPriority;
+  stripmine_priority_customization: CompanionPriority;
   weather_clear_day_variant: number;
   weather_clear_night_variant: number;
   weather_rain_variant: number;
@@ -138,7 +164,22 @@ export interface Status {
     logical_lit: number;
     physical_lit: number;
   };
-  artwork: { sample_y?: number; filename?: string; colors?: RGB[] };
+  artwork: { sample_y?: number; filename?: string; colors?: RGB[]; dominant_colors?: RGB[] };
+  launch_artwork: {
+    active: boolean;
+    paused: boolean;
+    pending: boolean;
+    pattern: LaunchArtworkPattern;
+    duration_seconds: number;
+    remaining_seconds: number;
+    colour_count: 2 | 3;
+    dominant_colors: RGB[];
+    colors: RGB[];
+  };
+  customization: {
+    preview_active: boolean;
+    colors: RGB[];
+  };
   countdown: {
     active: boolean;
     source: "" | "parental" | "free" | "preview";

@@ -1,4 +1,4 @@
-# SignalBar architecture
+# GabeCubeAura architecture
 
 ## Pipeline
 
@@ -6,31 +6,37 @@
 
 - **Providers** collect or hold facts and produce optional 17-pixel frames.
   `PerformanceProvider` reads local CPU/GPU Linux metrics at 2 Hz,
-  `ArtworkProvider` owns validated/cacheable browser samples,
+  `ArtworkProvider` owns validated/cacheable browser samples. A separate
+  launch-artwork cache owns the two- and three-colour palettes used by
+  `LaunchArtworkProvider`,
   `CountdownProvider` owns independent parental/free/preview deadlines,
   `EventProvider` owns short queued animations and recording state,
   `ControllerProvider` owns controller inventory, battery thresholds and
   optional gauges, and `IdleProvider` deliberately emits no frame (Vanilla).
+- **Display routing** selects one permanent provider independently for Home and
+  in-game contexts, with an optional AppID override. Game launches, Playtime,
+  Light events and Controller alerts are temporary layers; they do not change
+  the selected permanent provider.
 - **Arbiter** is pure policy. Disabled is an explicit user stop. Short, opted-in
   events can play over a stable native frame even when no game is running.
-  Otherwise Valve/explicit Steam activity is above SignalBar providers, Steam
-  Families is above the personal timer, and an active timer is above the
-  user's explicit Artwork or Performance provider. Transient events may briefly
-  replace a non-critical timer; its final five minutes cannot be interrupted.
+  Otherwise Valve/explicit Steam activity is above GabeCubeAura providers, Steam
+  Families is above the personal timer. A launch animation is above a regular
+  timer but below its critical final five minutes. Short alerts pause the
+  launch's visible timer, then it resumes; critical countdowns cancel it.
   A recording marker may decorate only a base display. Its centre pixel
   replaces, rather than blends with, the base colour. Optional isolation makes
   its immediate neighbours black to reduce optical bleed through the diffuser;
   this isolation is enabled by default.
-  Low-battery animations outrank ordinary short events. The optional persistent
-  controller gauge replaces Artwork or Performance only in its selected
-  context, and never displaces a countdown.
+  Low-battery animations outrank ordinary short events. The controller gauge,
+  Weather, Artwork, Performance, or Steam/default is the routed permanent
+  display for a context and never displaces a temporary layer.
 - **Renderer** is the only production component holding the hardware adapter.
   It validates exactly 17 RGB pixels, serializes access, coalesces identical
   frames, rate-limits writes, reads back the actual signature and fails closed.
 
 ## Startup lifecycle
 
-Decky's one-time frontend plugin initializer starts a background SignalBar
+Decky's one-time frontend plugin initializer starts a background GabeCubeAura
 runtime immediately when the bundle loads. That runtime reports the already
 running game, polls as a fallback, subscribes to game lifetime, Steam Families,
 download, controller and resume events, and samples local Artwork without waiting for the
@@ -69,28 +75,28 @@ All animations start from a dark frame, suspend the selected base for 1.2–4.85
 seconds, and expire by monotonic time. A per-category variant is validated and
 persisted; queued effects retain the variant selected when they arrived, while
 a manual preview plays immediately without changing the saved choice. At most
-three pending effects queue; near-duplicate callbacks are coalesced. The current Artwork/Performance frame
+three pending effects queue; near-duplicate callbacks are coalesced. The current permanent display
 or still-running countdown is recomputed after the animation. Critical
 countdowns clear pending effects. Disabled is checked before event selection.
 An event may take over a stable native frame, which Renderer snapshots and
 restores only if its last write is still present. A fresh native write during
 the animation cancels it immediately, without restoring the stale snapshot.
 Recording start
-sets a persistent centre marker over Artwork or Performance after its transient
+sets a persistent centre marker over a compatible permanent display after its transient
 effect; stop removes it, and game exit clears it. It is never applied to a
 countdown or event frame. Previews do not set that persistent state.
 
 ## Vanilla Guard
 
 The backend polls all `multi_intensity` and `brightness` attributes. After a
-SignalBar write, Renderer records the read-back signature. A later signature
+GabeCubeAura write, Renderer records the read-back signature. A later signature
 that differs from that verified value is treated as external ownership:
 
-1. abandon SignalBar's remembered frame without restoring it;
+1. abandon GabeCubeAura's remembered frame without restoring it;
 2. report Valve as owner;
 3. renew a cooldown on further changes;
 4. require both cooldown expiry and a stable observation window;
-5. only then allow Arbiter to select a SignalBar provider again.
+5. only then allow Arbiter to select a GabeCubeAura provider again.
 
 Native download callbacks in the Decky frontend create short renewable Steam
 activity leases so the backend can yield before or during a known transition.

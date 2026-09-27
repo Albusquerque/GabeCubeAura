@@ -1,4 +1,4 @@
-"""Deterministic weather loops for SignalBar's 17 physical LEDs.
+"""Deterministic weather loops for GabeCubeAura's 17 physical LEDs.
 
 Weather stays a background colour field with small, repeatable motion. No
 temperature pixels, external state, device access, or network calls live here.
@@ -259,7 +259,7 @@ def _cloud(frame, variant, time):
     if variant == 0:
         shadow(-5+time*3.25)
     elif variant == 1:
-        # Two distinct passes, not a central collision or a ping-pong bounce.
+        # Two distinct passes, not a central collision or a reversing bounce.
         if .2 <= time < 3.65:
             envelope = smooth(.2,.7,time)*(1-smooth(3.15,3.65,time))
             shadow(-4+(time-.2)*4.2,envelope)

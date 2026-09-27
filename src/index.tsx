@@ -1,8 +1,8 @@
 import {
   ButtonItem,
-  ColorPickerModal,
   ConfirmModal,
   DropdownItem,
+  Focusable,
   PanelSection,
   PanelSectionRow,
   Navigation,
@@ -23,12 +23,14 @@ import {
   getArtwork,
   getStatus,
   previewCountdown,
+  previewCustomization,
+  previewLaunchArtwork,
   previewController,
   previewWeather,
   resetConfiguration,
   searchWeatherCities,
   setArtworkSetting,
-  setMode,
+  setLaunchArtworkSetting,
   setGameDisplay,
   setSetting,
   startFreeTimer,
@@ -38,21 +40,36 @@ import {
 } from "./api";
 import { sampleArtwork } from "./artwork";
 import { PalettePreview } from "./components/PalettePreview";
+import { CUSTOMIZATION_PATTERN_OPTIONS, LAUNCH_ARTWORK_PATTERN_OPTIONS, customizationPatternLabel } from "./customization_catalog";
 import { CONTROLLER_VARIANTS } from "./controller_variants";
 import { EVENT_VARIANTS } from "./event_variants";
 import { hslStringToRgb, performancePreview, rgbToHsl } from "./performance";
-import { startSignalBarRuntime } from "./runtime";
+import { startGabeCubeAuraRuntime } from "./runtime";
 import { buildSettingsSnapshot } from "./settings_snapshot";
 import { WEATHER_CONDITIONS, WEATHER_VARIANTS } from "./weather_variants";
 import { startWeatherTopBar } from "./weather_topbar";
-import type { ArtworkPayload, ArtworkSource, CompanionPriority, Status, WeatherCondition, WeatherLocation } from "./types";
+import type { ArtworkPayload, ArtworkSource, CompanionPriority, GameDisplay, HomeDisplay, RGB, Status, WeatherCondition, WeatherLocation } from "./types";
 
-const MODE_OPTIONS = [
+const HOME_DISPLAY_OPTIONS: { data: HomeDisplay; label: string }[] = [
+  { data: "steam", label: "GabeCubeAura Off" },
+  { data: "customization", label: "Customization+" },
+  { data: "performance", label: "Performance" },
+  { data: "weather", label: "Weather" },
+  { data: "controller", label: "Controller status" },
+];
+
+const GAME_DISPLAY_OPTIONS: { data: GameDisplay; label: string }[] = [
+  { data: "steam", label: "GabeCubeAura Off" },
+  { data: "customization", label: "Customization+" },
   { data: "artwork", label: "Artwork" },
   { data: "performance", label: "Performance" },
-  { data: "events", label: "Signals only" },
-  { data: "disabled", label: "Disabled" },
+  { data: "weather", label: "Weather" },
+  { data: "controller", label: "Controller status" },
 ];
+
+const displayLabel = (display: HomeDisplay | GameDisplay) => (
+  [...HOME_DISPLAY_OPTIONS, ...GAME_DISPLAY_OPTIONS].find((item) => item.data === display)?.label ?? display
+);
 
 const ARTWORK_OPTIONS = [
   { data: "auto", label: "Auto (best row)" },
@@ -65,6 +82,27 @@ const ARTWORK_SOURCE_OPTIONS = [
   { data: "hero", label: "Library Hero (wide artwork)" },
   { data: "header", label: "Library Header" },
   { data: "capsule", label: "Library Capsule (vertical)" },
+];
+
+const LAUNCH_ARTWORK_COLOUR_OPTIONS = [
+  { data: 2, label: "2 dominant colours" },
+  { data: 3, label: "3 dominant colours" },
+];
+
+const LAUNCH_PALETTE_MODE_OPTIONS = [
+  { data: "artwork", label: "From artwork" },
+  { data: "custom", label: "Custom for this game" },
+];
+
+const CUSTOMIZATION_COLOUR_OPTIONS = [
+  { data: 1, label: "1 colour" },
+  { data: 2, label: "2 colours" },
+  { data: 3, label: "3 colours" },
+];
+
+const CUSTOMIZATION_DIRECTION_OPTIONS = [
+  { data: "forward", label: "Left to right" },
+  { data: "reverse", label: "Right to left" },
 ];
 
 const PERFORMANCE_OPTIONS = [
@@ -106,20 +144,13 @@ const COUNTDOWN_SCALE_OPTIONS = [
   { data: 240, label: "Full bar = 4 hours" },
 ];
 
-const CONTROLLER_DISPLAY_OPTIONS = [
-  { data: "off", label: "Off" },
-  { data: "home", label: "On Home" },
-  { data: "game", label: "In game" },
-  { data: "everywhere", label: "Everywhere" },
-];
-const WEATHER_DISPLAY_OPTIONS = CONTROLLER_DISPLAY_OPTIONS;
 const WEATHER_TEMPERATURE_UNITS = [
   { data: "celsius", label: "Celsius (°C)" },
   { data: "fahrenheit", label: "Fahrenheit (°F)" },
 ];
 const COMPANION_PRIORITY_OPTIONS = [
   { data: "stripmine", label: "StripMine while the game is active" },
-  { data: "signalbar", label: "SignalBar" },
+  { data: "signalbar", label: "GabeCubeAura" },
 ];
 const CONTROLLER_ALERT_OPTIONS = [
   { data: "off", label: "Off" },
@@ -201,15 +232,40 @@ function PerformanceReadout({ status }: { status: Status }) {
   </div>;
 }
 
+function OpaqueColorPickerModal({ title, color, closeModal, onConfirm }: {
+  title: string;
+  color: RGB;
+  closeModal: () => void;
+  onConfirm: (color: RGB) => void;
+}) {
+  const [initialHue, initialSaturation, initialLightness] = rgbToHsl(color);
+  const [hue, setHue] = useState(initialHue);
+  const [saturation, setSaturation] = useState(initialSaturation);
+  const [lightness, setLightness] = useState(initialLightness);
+  const selected = hslStringToRgb(`hsl(${hue}, ${saturation}%, ${lightness}%)`) ?? color;
+  return <ConfirmModal strTitle={title} strOKButtonText="Use colour" strCancelButtonText="Cancel"
+    onCancel={closeModal} onOK={() => { onConfirm(selected); closeModal(); }}>
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <span style={{ width: 38, height: 38, borderRadius: 5,
+          background: `rgb(${selected.join(", ")})`, boxShadow: "0 0 0 1px rgba(255,255,255,.45)" }} />
+        <span style={{ opacity: .78, fontSize: ".8em" }}>Opaque RGB colour · no alpha channel on the LED hardware.</span>
+      </div>
+      <SliderField label="Hue" value={hue} min={0} max={360} step={1} showValue
+        onChange={setHue} />
+      <SliderField label="Saturation" value={saturation} min={0} max={100} step={1} showValue valueSuffix="%"
+        onChange={setSaturation} />
+      <SliderField label="Lightness" value={lightness} min={0} max={100} step={1} showValue valueSuffix="%"
+        onChange={setLightness} />
+    </div>
+  </ConfirmModal>;
+}
+
 function chooseSettingColor(key: string, label: string, color: [number, number, number], setStatus: (value: Status) => void) {
-  const [hue, saturation, lightness] = rgbToHsl(color);
   let modal: ReturnType<typeof showModal> | undefined;
-  modal = showModal(<ColorPickerModal title={label} defaultH={hue} defaultS={saturation}
-    defaultL={lightness} defaultA={1} closeModal={() => modal?.Close()}
-    onConfirm={(value) => {
-      const nextColor = hslStringToRgb(value);
-      if (nextColor) void setSetting(key, nextColor).then(setStatus).catch(console.warn);
-    }} />);
+  modal = showModal(<OpaqueColorPickerModal title={label} color={color}
+    closeModal={() => modal?.Close()}
+    onConfirm={(nextColor) => void setSetting(key, nextColor).then(setStatus).catch(console.warn)} />);
 }
 
 function ColorChoice({ label, color, onClick }: {
@@ -228,6 +284,46 @@ function ColorChoice({ label, color, onClick }: {
       boxShadow: "0 0 0 1px rgba(255,255,255,.45)",
     }} />
   </ButtonItem>;
+}
+
+function PreciseColorEditor({ label, color, onChange }: {
+  label: string;
+  color: RGB;
+  onChange: (color: RGB) => void;
+}) {
+  const canonicalHex = `#${color.map((channel) => channel.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+  const [hexText, setHexText] = useState(canonicalHex);
+  useEffect(() => setHexText(canonicalHex), [canonicalHex]);
+  const setChannel = (channel: number, value: number) => {
+    const next = [...color] as RGB;
+    next[channel] = Math.max(0, Math.min(255, Math.round(value)));
+    onChange(next);
+  };
+  const choose = () => {
+    let modal: ReturnType<typeof showModal> | undefined;
+    modal = showModal(<OpaqueColorPickerModal title={label} color={color}
+      closeModal={() => modal?.Close()} onConfirm={onChange} />);
+  };
+  return <div style={{ width: "100%" }}>
+    <ColorChoice label={label} color={color} onClick={choose} />
+    <TextField label="Hex" value={hexText} description="Exact #RRGGBB colour"
+      onChange={(event) => {
+        const next = event.currentTarget.value.toUpperCase();
+        setHexText(next);
+        const match = /^#?([0-9A-F]{6})$/.exec(next);
+        if (match) onChange([
+          parseInt(match[1].slice(0, 2), 16),
+          parseInt(match[1].slice(2, 4), 16),
+          parseInt(match[1].slice(4, 6), 16),
+        ]);
+      }} />
+    <SliderField label="Red" value={color[0]} min={0} max={255} step={1} showValue
+      onChange={(value) => setChannel(0, value)} />
+    <SliderField label="Green" value={color[1]} min={0} max={255} step={1} showValue
+      onChange={(value) => setChannel(1, value)} />
+    <SliderField label="Blue" value={color[2]} min={0} max={255} step={1} showValue
+      onChange={(value) => setChannel(2, value)} />
+  </div>;
 }
 
 function addRecordingMarker(status: Status, colors: Status["events"]["colors"] | undefined) {
@@ -445,10 +541,10 @@ function ControllersPanel({ status, setStatus }: { status: Status; setStatus: (n
   const preview = async (kind: keyof typeof CONTROLLER_VARIANTS, variant: string) => {
     try {
       const played = await previewController(kind, variant);
-      setPreviewMessage(played ? "Preview requested. It does not test controller detection; LED output still follows SignalBar priorities."
+      setPreviewMessage(played ? "Preview requested. It does not test controller detection; LED output still follows GabeCubeAura priorities."
         : "Preview unavailable in Disabled mode or during the final five minutes of a countdown.");
       setStatus(await getStatus());
-    } catch { setPreviewMessage("Preview could not reach SignalBar. Check the Decky backend."); }
+    } catch { setPreviewMessage("Preview could not reach GabeCubeAura. Check the Decky backend."); }
   };
   const groups = [
     ["connect", "Connection", "controller_connect_enabled", "controller_connect_variant"],
@@ -472,10 +568,9 @@ function ControllersPanel({ status, setStatus }: { status: Status; setStatus: (n
         {telemetry?.error ? <div style={{ color: "#ffca86", marginTop: 6 }}>{telemetry.error}</div> : null}
         {previewMessage ? <div style={{ marginTop: 6 }}>{previewMessage}</div> : null}
       </div></PanelSectionRow>
-      <PanelSectionRow><DropdownItem label="Permanent battery gauge"
-        description="On Home by default. In game and Everywhere are also available. Turning this on switches the permanent weather display off. Countdowns and brief alerts take priority."
-        rgOptions={CONTROLLER_DISPLAY_OPTIONS} selectedOption={status.controller_battery_display}
-        onChange={async (option) => setStatus(await setSetting("controller_battery_display", String(option.data)))} /></PanelSectionRow>
+      <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
+        Select <b>Controller status</b> for Home or In game on the Display routing page to use the permanent gauge. Brief alerts remain independent.
+      </div></PanelSectionRow>
       <PanelSectionRow><ToggleField label="Brief controller alerts"
         description="Master switch for connection, low-battery and brief charging signals. It does not turn off the permanent gauge or continuous charging."
         checked={status.controller_alerts_enabled}
@@ -511,7 +606,7 @@ function ControllersPanel({ status, setStatus }: { status: Status; setStatus: (n
     <PanelSection title="Controller colours">
       <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .8 }}>
         These colours tint controller gauges and signals, including previews. White highlights stay white.
-        Other SignalBar modes are unchanged. Lower brightness may reduce pale glow on the diffuser.
+        Other GabeCubeAura modes are unchanged. Lower brightness may reduce pale glow on the diffuser.
       </div></PanelSectionRow>
       <PanelSectionRow><SliderField label="Controller brightness" min={10} max={100} step={5}
         showValue valueSuffix="%" value={status.controller_gauge_brightness}
@@ -584,18 +679,8 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
       setCityResults([]);
       setCityQuery(city.name);
       setCountryQuery(city.country);
-      setMessage("City saved. Choose where the weather should appear.");
+      setMessage("City saved. Select Weather on the Display routing page to show it on the LED bar.");
     } catch (error) { setMessage(`Could not save city: ${String(error)}`); }
-  };
-  const setDisplay = async (display: string) => {
-    if (display !== "off" && !status.weather_location) {
-      setMessage("Choose a city first. No location is detected automatically.");
-      return;
-    }
-    try {
-      setStatus(await setSetting("weather_display", display));
-      setMessage(display === "off" ? "Weather display off." : "Weather selected. The permanent controller gauge is now off.");
-    } catch (error) { setMessage(`Could not change weather display: ${String(error)}`); }
   };
   const playPreview = async (condition: WeatherCondition = previewCondition) => {
     try {
@@ -649,10 +734,9 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
         description="Applies to the number beside the SteamOS clock only, not the LED animations."
         rgOptions={WEATHER_TEMPERATURE_UNITS} selectedOption={status.weather_temperature_unit}
         onChange={async (option) => setStatus(await setSetting("weather_temperature_unit", String(option.data)))} /></PanelSectionRow>
-      <PanelSectionRow><DropdownItem label="Permanent weather display"
-        description="Off until you choose a city. On Home, In game or Everywhere replaces the permanent controller gauge; brief controller alerts and countdowns keep priority."
-        rgOptions={WEATHER_DISPLAY_OPTIONS} selectedOption={status.weather_display}
-        onChange={(option) => void setDisplay(String(option.data))} /></PanelSectionRow>
+      <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
+        Select <b>Weather</b> for Home, In game, or a game override on the Display routing page. Brief alerts and playtime warnings remain independent.
+      </div></PanelSectionRow>
       <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .72 }}>
         Current conditions refresh about every 15 minutes. The last reading can be reused for up to one hour; then weather yields the bar. No city, no network request. Data by <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>.
       </div></PanelSectionRow>
@@ -676,7 +760,7 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
     </PanelSection>
     <PanelSection title="Weather brightness">
       <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .78 }}>
-        Brightness scales RGB linearly for all weather animations. Use 100% with cutoff 0 for the unprocessed animation. These controls affect Weather only, not Steam's master LED brightness or other SignalBar modes.
+        Brightness scales RGB linearly for all weather animations. Use 100% with cutoff 0 for the unprocessed animation. These controls affect Weather only, not Steam's master LED brightness or other GabeCubeAura modes.
       </div></PanelSectionRow>
       <PanelSectionRow><SliderField label="Weather LED brightness" min={10} max={100} step={5}
         showValue valueSuffix="%" value={status.weather_brightness}
@@ -697,12 +781,59 @@ function WeatherPanel({ status, setStatus }: { status: Status; setStatus: (next:
   </>;
 }
 
+function CustomizationPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
+  const activeHome = status.home_display === "customization";
+  const activeGame = status.game_display === "customization";
+  const context = activeHome && activeGame ? "Everywhere" : activeHome ? "Home" : activeGame ? "In game" : "Not selected";
+  const colourKeys = ["customization_colour_1", "customization_colour_2", "customization_colour_3"] as const;
+  const preview = async () => {
+    await previewCustomization();
+    setStatus(await getStatus());
+  };
+  return <PanelSection title="Customization+">
+    <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .82 }}>
+      Permanent display · <b>{context}</b>. Select Customization+ in Display routing for Home, in game, or both. Temporary layers still take priority.
+    </div></PanelSectionRow>
+    <PanelSectionRow><DropdownItem label="Pattern" rgOptions={CUSTOMIZATION_PATTERN_OPTIONS}
+      selectedOption={status.customization_pattern}
+      onChange={async (option) => setStatus(await setSetting("customization_pattern", String(option.data)))} /></PanelSectionRow>
+    <>
+      <PanelSectionRow><DropdownItem label="Palette" rgOptions={CUSTOMIZATION_COLOUR_OPTIONS}
+        selectedOption={status.customization_colour_count}
+        onChange={async (option) => setStatus(await setSetting("customization_colour_count", Number(option.data)))} /></PanelSectionRow>
+      {colourKeys.slice(0, status.customization_colour_count).map((key, index) => <PanelSectionRow key={key}>
+        <PreciseColorEditor label={`Colour ${index + 1}`} color={status[key]}
+          onChange={(color) => void setSetting(key, color).then(setStatus).catch(console.warn)} />
+      </PanelSectionRow>)}
+    </>
+    <PanelSectionRow><SliderField label="Brightness" description="Raw RGB ceiling: 34 is the minimum retained by GabeCubeAura because lower values switch the physical bar off; 255 is full output."
+      value={status.customization_brightness} min={34} max={255} step={1} showValue valueSuffix=" / 255"
+      onChange={async (value) => setStatus(await setSetting("customization_brightness", value))} /></PanelSectionRow>
+    {status.customization_pattern !== "steady" ? <PanelSectionRow><SliderField label="Speed"
+      value={status.customization_speed} min={1} max={100} step={1} showValue valueSuffix=" / 100"
+      onChange={async (value) => setStatus(await setSetting("customization_speed", value))} /></PanelSectionRow> : null}
+    {status.customization_pattern !== "steady" ? <PanelSectionRow>
+      <DropdownItem label="Direction" rgOptions={CUSTOMIZATION_DIRECTION_OPTIONS}
+        selectedOption={status.customization_direction}
+        onChange={async (option) => setStatus(await setSetting("customization_direction", String(option.data)))} />
+    </PanelSectionRow> : null}
+    <PanelSectionRow><ButtonItem label="Preview Customization+" description="Plays for 8 seconds without changing Display routing."
+      onClick={() => void preview().catch(console.warn)}>Preview</ButtonItem></PanelSectionRow>
+    <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .82 }}>
+      {status.customization.preview_active ? "Preview playing" : "Live 17-LED preview"}
+      <PalettePreview colors={status.customization.colors} />
+    </div></PanelSectionRow>
+  </PanelSection>;
+}
+
 function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
   const priorities = ([
     ["Artwork", "stripmine_priority_artwork", "The sampled game artwork display."],
     ["Performance", "stripmine_priority_performance", "CPU, GPU and mixed performance displays."],
     ["Weather", "stripmine_priority_weather", "Permanent and preview weather animations."],
     ["Controller displays", "stripmine_priority_controller", "Battery gauges, connection and charging displays."],
+    ["Game launches", "stripmine_priority_game_launches", "Temporary animations using colours from the launched game's artwork."],
+    ["Customization+", "stripmine_priority_customization", "The persistent user-authored display."],
     ["Light Events", "stripmine_priority_light_events", "Notifications, achievements, screenshots and recording cues."],
   ] as const);
   return <>
@@ -710,7 +841,7 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
       <PanelSectionRow>
         <ToggleField
           label="Coordinate LED ownership"
-          description="SignalBar and StripMine exchange a short local lease before either writes. Unknown applications are still treated as conflicts."
+          description="GabeCubeAura and StripMine exchange a short local lease before either writes. Unknown applications are still treated as conflicts."
           checked={status.stripmine_integration_enabled}
           onChange={async (value) => setStatus(await setSetting("stripmine_integration_enabled", value))}
         />
@@ -738,25 +869,28 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
       </PanelSectionRow>)}
       <PanelSectionRow>
         <div style={{ width: "100%", fontSize: ".78em", opacity: .75 }}>
-          Playtime countdowns and their critical alerts always remain SignalBar priorities. If coordination is disabled, both plugins fall back to their independent ownership guards.
+          Playtime countdowns and their critical alerts always remain GabeCubeAura priorities. If coordination is disabled, both plugins fall back to their independent ownership guards.
         </div>
       </PanelSectionRow>
     </PanelSection>
   </>;
 }
 
-type Page = "quick" | "artwork" | "performance" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "advanced";
+type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "advanced";
 
 function Content({ page = "quick" }: { page?: Page }) {
   const [status, setStatusState] = useState<Status | null>(null);
   const [hero, setHero] = useState<ArtworkPayload | null>(null);
   const [heroRequestKey, setHeroRequestKey] = useState("");
-  const artworkRequest = useRef(0);
+  const [launchHero, setLaunchHero] = useState<ArtworkPayload | null>(null);
+  const [launchHeroRequestKey, setLaunchHeroRequestKey] = useState("");
+  const artworkRequests = useRef({ artwork: 0, launch: 0 });
   const [showDebug, setShowDebug] = useState(false);
   const [configurationExportPath, setConfigurationExportPath] = useState("");
   const [configurationExportError, setConfigurationExportError] = useState("");
   const [configurationActionMessage, setConfigurationActionMessage] = useState("");
   const [configurationBusy, setConfigurationBusy] = useState(false);
+  const [launchPreviewError, setLaunchPreviewError] = useState("");
   const manualTimer = useRef<number | null>(null);
   const setStatus = (next: Status) => {
     setStatusState(next);
@@ -767,7 +901,8 @@ function Content({ page = "quick" }: { page?: Page }) {
     void getStatus().then((next) => alive && setStatus(next)).catch(console.warn);
     const timer = window.setInterval(() => {
       void getStatus().then((next) => alive && setStatus(next)).catch(() => undefined);
-    }, page === "events" || page === "controllers" || page === "weather" || page === "compatibility" ? 180 : 1000);
+    }, page === "events" || page === "controllers" || page === "weather"
+      || page === "compatibility" || page === "launches" ? 100 : 1000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -775,43 +910,59 @@ function Content({ page = "quick" }: { page?: Page }) {
     };
   }, [page]);
 
-  const loadAndSampleArtwork = useCallback(async (appid: number, source: ArtworkSource) => {
-    const request = ++artworkRequest.current;
+  useEffect(() => {
+    setLaunchPreviewError("");
+  }, [status?.game.appid]);
+
+  const loadAndSampleArtwork = useCallback(async (
+    appid: number,
+    source: ArtworkSource,
+    purpose: "artwork" | "launch" = "artwork",
+  ) => {
+    const request = ++artworkRequests.current[purpose];
+    const setArtwork = purpose === "launch" ? setLaunchHero : setHero;
+    const setRequestKey = purpose === "launch" ? setLaunchHeroRequestKey : setHeroRequestKey;
     if (appid <= 0) {
-      setHero(null);
-      setHeroRequestKey("");
+      setArtwork(null);
+      setRequestKey("");
       return;
     }
     const current = await getStatus();
-    if (request !== artworkRequest.current) return;
-    const artwork = await getArtwork(appid, source);
-    if (request !== artworkRequest.current) return;
-    setHero(artwork);
-    setHeroRequestKey(`${appid}:${source}`);
+    if (request !== artworkRequests.current[purpose]) return;
+    const artwork = await getArtwork(appid, source, purpose);
+    if (request !== artworkRequests.current[purpose]) return;
+    setArtwork(artwork);
+    setRequestKey(`${appid}:${source}`);
     if (!artwork.found || !artwork.data_uri || !artwork.fingerprint || artwork.cached) {
       const refreshed = await getStatus();
-      if (request === artworkRequest.current) setStatus(refreshed);
+      if (request === artworkRequests.current[purpose]) setStatus(refreshed);
       return;
     }
     const mode = current.artwork_mode;
     const manualY = current.artwork_manual_y;
     const result = await sampleArtwork(artwork.data_uri, mode, manualY);
-    if (request !== artworkRequest.current) return;
+    if (request !== artworkRequests.current[purpose]) return;
     const next = await submitArtwork(
       appid,
       artwork.fingerprint,
       result.colors,
       result.y,
+      result.dominantPalettes,
       artwork.filename ?? "",
       artwork.source ?? source,
+      purpose,
     );
-    if (request === artworkRequest.current) setStatus(next);
+    if (request === artworkRequests.current[purpose]) setStatus(next);
   }, []);
 
   const refreshArtworkAfterConfiguration = (next: Status) => {
     setHeroRequestKey("");
+    setLaunchHeroRequestKey("");
     if (next.game.appid > 0) {
-      void loadAndSampleArtwork(next.game.appid, next.artwork_source).catch(console.warn);
+      void Promise.all([
+        loadAndSampleArtwork(next.game.appid, next.artwork_source, "artwork"),
+        loadAndSampleArtwork(next.game.appid, next.launch_artwork_source, "launch"),
+      ]).catch(console.warn);
     }
   };
 
@@ -837,7 +988,7 @@ function Content({ page = "quick" }: { page?: Page }) {
       const path = selected?.realpath || selected?.path;
       if (!path) return;
       let modal: ReturnType<typeof showModal> | undefined;
-      modal = showModal(<ConfirmModal strTitle="Import SignalBar configuration?"
+      modal = showModal(<ConfirmModal strTitle="Import GabeCubeAura configuration?"
         strDescription="This replaces every saved setting and per-game profile. The personal timer stops."
         strOKButtonText="Import" strCancelButtonText="Cancel"
         onCancel={() => modal?.Close()}
@@ -851,7 +1002,7 @@ function Content({ page = "quick" }: { page?: Page }) {
 
   const confirmConfigurationReset = () => {
     let modal: ReturnType<typeof showModal> | undefined;
-    modal = showModal(<ConfirmModal strTitle="Reset SignalBar settings?"
+    modal = showModal(<ConfirmModal strTitle="Reset GabeCubeAura settings?"
       strDescription="All saved settings and per-game profiles will return to the shipped defaults. The personal timer stops. Export a JSON backup first if you want to restore them later."
       strOKButtonText="Reset settings" strCancelButtonText="Cancel" bDestructiveWarning
       onCancel={() => modal?.Close()}
@@ -862,7 +1013,7 @@ function Content({ page = "quick" }: { page?: Page }) {
         void resetConfiguration().then((next) => {
           setStatus(next);
           refreshArtworkAfterConfiguration(next);
-          setConfigurationActionMessage("Settings and per-game profiles reset to SignalBar defaults.");
+          setConfigurationActionMessage("Settings and per-game profiles reset to GabeCubeAura defaults.");
         }).catch((error) => {
           setConfigurationActionMessage(`Reset failed: ${String(error)}`);
         }).finally(() => setConfigurationBusy(false));
@@ -871,26 +1022,34 @@ function Content({ page = "quick" }: { page?: Page }) {
 
   useEffect(() => {
     if (!status) return;
-    const needsArtwork = page === "artwork" || (page === "quick" && status.mode === "artwork");
+    const needsArtwork = page === "artwork" || page === "launches"
+      || (page === "quick" && status.current_display === "artwork");
     if (!needsArtwork) {
       setHero(null);
       setHeroRequestKey("");
+      setLaunchHero(null);
+      setLaunchHeroRequestKey("");
       return;
     }
-    void loadAndSampleArtwork(status.game.appid, status.artwork_source).catch((error) => {
-      console.warn("[SignalBar] artwork preview failed", error);
-    });
-  }, [page, status?.game.appid, status?.mode, status?.artwork_source, loadAndSampleArtwork]);
+    const purposes: ("artwork" | "launch")[] = [page === "launches" ? "launch" : "artwork"];
+    for (const purpose of purposes) {
+      const source = purpose === "launch" ? status.launch_artwork_source : status.artwork_source;
+      void loadAndSampleArtwork(status.game.appid, source, purpose).catch((error) => {
+        console.warn("[GabeCubeAura] artwork preview failed", error);
+      });
+    }
+  }, [page, status?.game.appid, status?.current_display, status?.artwork_source,
+    status?.launch_artwork_source, loadAndSampleArtwork]);
 
   if (!status) {
-    return <PanelSection><PanelSectionRow>Loading SignalBar…</PanelSectionRow></PanelSection>;
+    return <PanelSection><PanelSectionRow>Loading GabeCubeAura…</PanelSectionRow></PanelSection>;
   }
   if (!status.available) {
     return (
-      <PanelSection title="SignalBar">
+      <PanelSection title="GabeCubeAura">
         <PanelSectionRow>
           <div style={{ fontSize: ".88em", opacity: 0.82 }}>
-            No 17-pixel <code>valve-leds</code> light bar was found. SignalBar is idle and has made no hardware changes.
+            No 17-pixel <code>valve-leds</code> light bar was found. GabeCubeAura is idle and has made no hardware changes.
             {status.error ? <div style={{ marginTop: 6 }}>{status.error}</div> : null}
           </div>
         </PanelSectionRow>
@@ -901,7 +1060,7 @@ function Content({ page = "quick" }: { page?: Page }) {
   const changeArtworkSetting = async (key: string, value: unknown) => {
     const next = await setArtworkSetting(status.game.appid, key, value);
     setStatus(next);
-    if (next.game.appid > 0) await loadAndSampleArtwork(next.game.appid, next.artwork_source);
+    if (next.game.appid > 0) await loadAndSampleArtwork(next.game.appid, next.artwork_source, "artwork");
   };
   const changeManualPosition = (value: number) => {
     setStatus({ ...status, artwork_manual_y: value });
@@ -921,8 +1080,27 @@ function Content({ page = "quick" }: { page?: Page }) {
   const artColors = status.artwork.colors;
   const currentArtwork = status.game.appid > 0 && heroRequestKey === `${status.game.appid}:${status.artwork_source}`
     && hero?.appid === status.game.appid && hero.found && hero.data_uri ? hero : null;
+  const currentLaunchArtwork = status.game.appid > 0 && launchHeroRequestKey === `${status.game.appid}:${status.launch_artwork_source}`
+    && launchHero?.appid === status.game.appid && launchHero.found && launchHero.data_uri ? launchHero : null;
+  const runLaunchPreview = async () => {
+    setLaunchPreviewError("");
+    try {
+      const started = await previewLaunchArtwork();
+      const next = await getStatus();
+      setStatus(next);
+      if (!started) {
+        setLaunchPreviewError(!next.signalbar_enabled
+          ? "Enable GabeCubeAura outputs before starting a preview."
+          : "Preview could not start. Wait for the current game's artwork palette, then try again.");
+      }
+    } catch (error) {
+      setLaunchPreviewError(`Preview failed: ${String(error)}`);
+    }
+  };
   const performanceColors = performancePreview(status);
-  const baseShownColors = status.provider.startsWith("event:") ? status.events.colors
+  const baseShownColors = status.provider.startsWith("launch-artwork:") ? status.launch_artwork.colors
+    : status.provider.startsWith("customization:") ? status.customization.colors
+    : status.provider.startsWith("event:") ? status.events.colors
     : status.provider.startsWith("controller:") || status.provider.startsWith("controller-") ? status.controllers.colors
     : status.provider === "countdown" ? status.countdown.colors
       : status.provider.startsWith("weather") ? status.weather.colors
@@ -930,7 +1108,10 @@ function Content({ page = "quick" }: { page?: Page }) {
         : status.provider.startsWith("performance") ? performanceColors : [];
   const shownColors = status.provider.endsWith("+recording")
     ? addRecordingMarker(status, baseShownColors) : baseShownColors;
-  const shownLabel = status.provider.startsWith("event:") ? status.events.variant
+  const shownLabel = status.provider.startsWith("launch-artwork:")
+    ? `Game launch · ${LAUNCH_ARTWORK_PATTERN_OPTIONS.find((item) => item.data === status.launch_artwork_pattern)?.label ?? status.launch_artwork_pattern}`
+    : status.provider.startsWith("customization:") ? `Customization+ · ${customizationPatternLabel(status.customization_pattern)}`
+    : status.provider.startsWith("event:") ? status.events.variant
     : status.provider.startsWith("controller:") ? `Controller · ${status.controllers.variant}`
       : status.provider === "controller-battery" ? "Controller battery"
       : status.provider === "controller-charging" ? "Controller charging"
@@ -938,7 +1119,8 @@ function Content({ page = "quick" }: { page?: Page }) {
       : status.provider.startsWith("weather") ? `Weather · ${status.weather.location?.name ?? "preview"}`
     : status.provider === "countdown" ? status.countdown.label
       : status.provider === "valve" ? "Steam / another app"
-        : status.provider === "none" ? "No SignalBar output" : status.provider;
+        : status.provider === "none" ? "No GabeCubeAura output" : status.provider;
+  const showPage = (target: Page) => page === target;
 
   return (
     <>
@@ -955,28 +1137,38 @@ function Content({ page = "quick" }: { page?: Page }) {
         </PanelSectionRow>
       </PanelSection> : null}
 
-      {page === "quick" ? <PanelSection title="Mode">
-        <PanelSectionRow>
-          <DropdownItem
-            label="Default display"
-            description="Used on Home and by games without an override. Signals only removes Artwork, Performance and Weather while keeping Light Events, countdowns, controller alerts and enabled battery or charging status alive. Disabled turns off every SignalBar light."
-            rgOptions={MODE_OPTIONS}
-            selectedOption={status.default_mode}
-            onChange={async (option) => setStatus(await setMode(String(option.data)))}
-          />
-        </PanelSectionRow>
+      {page === "quick" ? <PanelSection title="Permanent displays">
+        <PanelSectionRow><ToggleField label="Enable GabeCubeAura outputs"
+          description="Turns off every GabeCubeAura light without deleting display routes, launch effects, or per-game choices."
+          checked={status.signalbar_enabled}
+          onChange={async (value) => setStatus(await setSetting("signalbar_enabled", value))} /></PanelSectionRow>
+        <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em" }}>
+          <div>Home: <b>{displayLabel(status.home_display)}</b></div>
+          <div>In game: <b>{displayLabel(status.game_display)}</b></div>
+          <div>Current: <b>{displayLabel(status.current_display)}</b></div>
+        </div></PanelSectionRow>
         {status.game.appid > 0 ? <>
           <PanelSectionRow><DropdownItem label="Display for this game"
             description={`Saved for ${status.game.title || `AppID ${status.game.appid}`}. Does not change other games.`}
-            rgOptions={[{ data: "inherit", label: "Use default" }, { data: "artwork", label: "Artwork" }, { data: "performance", label: "Performance" }]}
+            rgOptions={[{ data: "inherit", label: "Use in-game default" }, ...GAME_DISPLAY_OPTIONS]}
             selectedOption={status.display_override}
             onChange={async (option) => setStatus(await setGameDisplay(status.game.appid, String(option.data)))} /></PanelSectionRow>
           <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
-            {status.default_mode === "disabled" ? "SignalBar is disabled. The saved game choice will apply when re-enabled."
-              : status.default_mode === "events" ? "Signals only is global: saved game displays remain dormant while Light Events, countdowns and enabled controller signals can still use the bar."
-              : `Active display: ${status.mode === "performance" ? "Performance" : "Artwork"}${status.display_override === "inherit" ? " (default)" : " (game profile)"}. Countdowns and short alerts keep their usual priority.`}
+            {!status.signalbar_enabled ? "GabeCubeAura is disabled. The saved game choice will apply when re-enabled."
+              : `Active display: ${displayLabel(status.current_display)}${status.display_override === "inherit" ? " (in-game default)" : " (game profile)"}. Temporary signals keep their own priority.`}
           </div></PanelSectionRow>
-        </> : <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>Launch a game to save its own Artwork or Performance choice.</div></PanelSectionRow>}
+        </> : null}
+      </PanelSection> : null}
+
+      {page === "quick" ? <PanelSection title="Temporary layers">
+        <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em", lineHeight: 1.5 }}>
+          <div>Game launches: <b>{status.launch_artwork_animation_enabled
+            ? `On · ${LAUNCH_ARTWORK_PATTERN_OPTIONS.find((item) => item.data === status.launch_artwork_pattern)?.label} · ${status.launch_artwork_duration_seconds} s · ${status.launch_artwork_colour_count} colours`
+            : "Off"}</b></div>
+          <div>Light events: <b>{status.events_enabled ? "On" : "Off"}</b></div>
+          <div>Playtime warnings: <b>{status.parental_countdown_enabled ? "On" : "Off"}</b></div>
+          <div>Controller alerts: <b>{status.controller_alerts_enabled ? "On" : "Off"}</b></div>
+        </div></PanelSectionRow>
       </PanelSection> : null}
 
       {page === "quick" ? <PanelSection title="Now showing">
@@ -1008,13 +1200,42 @@ function Content({ page = "quick" }: { page?: Page }) {
           </div>
         </PanelSectionRow>
         <PanelSectionRow>
-          <ButtonItem label="Detailed settings" onClick={() => { Navigation.CloseSideMenus(); Navigation.Navigate("/signalbar/settings"); }}>
+          <ButtonItem label="Detailed settings" onClick={() => { Navigation.CloseSideMenus(); Navigation.Navigate("/gabecubeaura/settings"); }}>
             Open settings
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection> : null}
 
-      {page === "artwork" ? <PanelSection title="Artwork">
+      {showPage("routing") ? <>
+        <PanelSection title="Display routing">
+          <PanelSectionRow><ToggleField label="Enable GabeCubeAura outputs"
+            description="Turns off every GabeCubeAura light without deleting display routes, launch effects, or per-game choices."
+            checked={status.signalbar_enabled}
+            onChange={async (value) => setStatus(await setSetting("signalbar_enabled", value))} /></PanelSectionRow>
+          <PanelSectionRow><DropdownItem label="Home display"
+            description="The permanent display used when no game is running. Temporary alerts and previews may still replace it."
+            rgOptions={HOME_DISPLAY_OPTIONS} selectedOption={status.home_display}
+            onChange={async (option) => setStatus(await setSetting("home_display", String(option.data)))} /></PanelSectionRow>
+          <PanelSectionRow><DropdownItem label="In-game display"
+            description="The permanent display used by games without their own override."
+            rgOptions={GAME_DISPLAY_OPTIONS} selectedOption={status.game_display}
+            onChange={async (option) => setStatus(await setSetting("game_display", String(option.data)))} /></PanelSectionRow>
+          <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
+            <b>GabeCubeAura Off</b> means no permanent GabeCubeAura display in that context; Steam keeps the bar between temporary layers. Game launches, alerts and playtime warnings remain available. The master switch above disables everything. Weather requires a city.
+          </div></PanelSectionRow>
+        </PanelSection>
+        {status.game.appid > 0 ? <PanelSection title="Current game override">
+          <PanelSectionRow><DropdownItem label={status.game.title || `AppID ${status.game.appid}`}
+            description="Saved for this AppID only."
+            rgOptions={[{ data: "inherit", label: "Use in-game default" }, ...GAME_DISPLAY_OPTIONS]}
+            selectedOption={status.display_override}
+            onChange={async (option) => setStatus(await setGameDisplay(status.game.appid, String(option.data)))} /></PanelSectionRow>
+        </PanelSection> : null}
+      </> : null}
+
+      {showPage("customization") ? <CustomizationPanel status={status} setStatus={setStatus} /> : null}
+
+      {showPage("artwork") ? <PanelSection title="Artwork display">
         <PanelSectionRow>
           <DropdownItem
             label="Steam image"
@@ -1073,18 +1294,120 @@ function Content({ page = "quick" }: { page?: Page }) {
         </PanelSectionRow>
       </PanelSection> : null}
 
-      {page === "performance" ? <PanelSection title="Performance">
+      {showPage("launches") ? <PanelSection title="Game launch animation">
+        <PanelSectionRow><ToggleField
+          label="Animate from game artwork"
+          description="Play one sequence when GabeCubeAura detects a newly running Steam AppID. This works with every Home and in-game display; starting GabeCubeAura while a game is already running does not replay it."
+          checked={status.launch_artwork_animation_enabled}
+          onChange={async (value) => setStatus(await setSetting("launch_artwork_animation_enabled", value))}
+        /></PanelSectionRow>
+        <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .82 }}>
+          {status.game.appid > 0
+            ? `${status.game.title || "Running game"} · AppID ${status.game.appid} · ${status.launch_artwork_palette_mode === "custom" ? "custom palette saved" : "artwork palette"}`
+            : "Start a game to detect its artwork or save a palette for its AppID."}
+        </div></PanelSectionRow>
+        <PanelSectionRow><DropdownItem
+          label="Artwork image"
+          description="Uses Steam's local artwork, including custom SteamGridDB images already installed in Steam. No image is uploaded."
+          rgOptions={ARTWORK_SOURCE_OPTIONS}
+          selectedOption={status.launch_artwork_source}
+          onChange={async (option) => {
+            const next = await setSetting("launch_artwork_source", String(option.data));
+            setStatus(next);
+            if (next.game.appid > 0) await loadAndSampleArtwork(
+              next.game.appid, next.launch_artwork_source, "launch",
+            );
+          }}
+        /></PanelSectionRow>
+        <PanelSectionRow><DropdownItem
+          label="Palette source"
+          description="A custom palette is saved for this AppID and reused on future launches."
+          rgOptions={LAUNCH_PALETTE_MODE_OPTIONS}
+          selectedOption={status.launch_artwork_palette_mode}
+          disabled={status.game.appid <= 0}
+          onChange={async (option) => setStatus(await setLaunchArtworkSetting(
+            status.game.appid, "palette_mode", String(option.data),
+          ))}
+        /></PanelSectionRow>
+        <PanelSectionRow><DropdownItem
+          label="Number of colours"
+          rgOptions={LAUNCH_ARTWORK_COLOUR_OPTIONS}
+          selectedOption={status.launch_artwork_colour_count}
+          onChange={async (option) => setStatus(await setSetting("launch_artwork_colour_count", Number(option.data)))}
+        /></PanelSectionRow>
+        {status.launch_artwork_palette_mode === "custom" && status.game.appid > 0
+          ? status.launch_artwork_custom_palettes[String(status.launch_artwork_colour_count) as "2" | "3"].map((color, index) =>
+            <PanelSectionRow key={`launch-custom-${status.launch_artwork_colour_count}-${index}`}>
+              <PreciseColorEditor label={`Launch colour ${index + 1}`} color={color}
+                onChange={(nextColor) => {
+                  const palettes = {
+                    "2": status.launch_artwork_custom_palettes["2"].map((entry) => [...entry] as RGB) as [RGB, RGB],
+                    "3": status.launch_artwork_custom_palettes["3"].map((entry) => [...entry] as RGB) as [RGB, RGB, RGB],
+                  };
+                  palettes[String(status.launch_artwork_colour_count) as "2" | "3"][index] = nextColor;
+                  void setLaunchArtworkSetting(status.game.appid, "custom_palettes", palettes).then(setStatus).catch(console.warn);
+                }} />
+            </PanelSectionRow>) : null}
+        <PanelSectionRow><DropdownItem
+          label="Pattern"
+          rgOptions={LAUNCH_ARTWORK_PATTERN_OPTIONS}
+          selectedOption={status.launch_artwork_pattern}
+          onChange={async (option) => setStatus(await setSetting("launch_artwork_pattern", String(option.data)))}
+        /></PanelSectionRow>
+        <PanelSectionRow><SliderField
+          label="Animation duration"
+          value={status.launch_artwork_duration_seconds}
+          min={3}
+          max={45}
+          step={1}
+          showValue
+          valueSuffix=" s"
+          onChange={async (value) => setStatus(await setSetting("launch_artwork_duration_seconds", value))}
+        /></PanelSectionRow>
+        <PanelSectionRow><div style={{ width: "100%", fontSize: ".8em", opacity: .86 }}>
+          {status.launch_artwork_palette_mode === "custom" ? "Saved colours for this game." : "Detected colours from the complete image, independent of the permanent Artwork row."}
+        </div></PanelSectionRow>
+        <PanelSectionRow><ButtonItem
+          label="Preview launch animation"
+          description={!status.signalbar_enabled
+            ? "Enable GabeCubeAura outputs first."
+            : status.game.appid > 0 && (status.launch_artwork.dominant_colors?.length ?? 0) > 0
+            ? "Play the selected pattern with the current game's active palette."
+            : "Start a game and wait for its palette first."}
+          disabled={!status.signalbar_enabled || status.game.appid <= 0 || (status.launch_artwork.dominant_colors?.length ?? 0) === 0}
+          onClick={() => void runLaunchPreview()}
+        >Preview</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .82 }}>
+          Live 17-LED launch preview
+          <PalettePreview colors={status.launch_artwork.colors ?? []} />
+        </div></PanelSectionRow>
+        <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .72 }}>
+          {status.launch_artwork.active
+            ? `${status.launch_artwork.paused ? "Paused by a short alert" : "Playing"} · ${Math.ceil(status.launch_artwork.remaining_seconds)} s remaining`
+            : status.launch_artwork.pending ? "Waiting for safe LED ownership and artwork colours…"
+              : launchPreviewError || "Idle"}
+        </div></PanelSectionRow>
+        {currentLaunchArtwork ? <PanelSectionRow>
+          <Focusable style={{ width: "100%", paddingBottom: 28, scrollMarginBottom: 24 }} aria-label="Launch artwork preview">
+            <ArtworkImage artwork={currentLaunchArtwork} title={status.game.title || "current game"} />
+          </Focusable>
+        </PanelSectionRow> : null}
+        <PanelSectionRow><ButtonItem
+          label="Preview launch animation"
+          description={!status.signalbar_enabled
+            ? "Enable GabeCubeAura outputs first."
+            : status.game.appid > 0 && (status.launch_artwork.dominant_colors?.length ?? 0) > 0
+              ? "Play the selected pattern again after reviewing the artwork."
+              : "Start a game and wait for its palette first."}
+          disabled={!status.signalbar_enabled || status.game.appid <= 0 || (status.launch_artwork.dominant_colors?.length ?? 0) === 0}
+          onClick={() => void runLaunchPreview()}
+        >Preview</ButtonItem></PanelSectionRow>
+      </PanelSection> : null}
+
+      {showPage("performance") ? <PanelSection title="Performance">
         <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .75 }}>
           Sensors update every 0.5 seconds in all display modes. These settings do not switch the active display.
         </div></PanelSectionRow>
-        <PanelSectionRow>
-          <ToggleField
-            label="Always show Performance"
-            description="When Default display is Performance, also show it on Home. A game's Artwork override still wins in that game. Steam's active LED animations retain priority."
-            checked={status.performance_always}
-            onChange={async (value) => setStatus(await setSetting("performance_always", value))}
-          />
-        </PanelSectionRow>
         <PanelSectionRow>
           <DropdownItem
             label="Meter"
@@ -1195,17 +1518,17 @@ function Content({ page = "quick" }: { page?: Page }) {
         </PanelSectionRow>
       </PanelSection> : null}
 
-      {page === "countdown" ? <CountdownPanel status={status} setStatus={setStatus} /> : null}
+      {showPage("countdown") ? <CountdownPanel status={status} setStatus={setStatus} /> : null}
 
-      {page === "events" ? <EventsPanel status={status} setStatus={setStatus} /> : null}
+      {showPage("events") ? <EventsPanel status={status} setStatus={setStatus} /> : null}
 
-      {page === "controllers" ? <ControllersPanel status={status} setStatus={setStatus} /> : null}
+      {showPage("controllers") ? <ControllersPanel status={status} setStatus={setStatus} /> : null}
 
-      {page === "weather" ? <WeatherPanel status={status} setStatus={setStatus} /> : null}
+      {showPage("weather") ? <WeatherPanel status={status} setStatus={setStatus} /> : null}
 
-      {page === "compatibility" ? <CompatibilityPanel status={status} setStatus={setStatus} /> : null}
+      {showPage("compatibility") ? <CompatibilityPanel status={status} setStatus={setStatus} /> : null}
 
-      {page === "advanced" ? <PanelSection title="Advanced / debug">
+      {showPage("advanced") ? <PanelSection title="Advanced / debug">
         <PanelSectionRow>
           <ToggleField
             label="Show debug details"
@@ -1219,7 +1542,7 @@ function Content({ page = "quick" }: { page?: Page }) {
               <div style={{ width: "100%", padding: "8px 10px", background: "rgba(0, 0, 0, .24)", borderRadius: 6, overflowWrap: "anywhere" }}>
                 <div style={{ fontSize: ".88em", fontWeight: 700 }}>Saved configuration</div>
                 <div style={{ fontSize: ".68em", opacity: .7, marginBottom: 6 }}>
-                  SignalBar {status.version} · saved choices, including inactive options · no device IDs
+                  GabeCubeAura {status.version} · saved choices, including inactive options · no device IDs
                 </div>
                 {buildSettingsSnapshot(status).map((section) => <div key={section.title} style={{ marginTop: 7 }}>
                   <div style={{ fontSize: ".77em", fontWeight: 700, color: "#9ee8f4" }}>{section.title}</div>
@@ -1239,7 +1562,7 @@ function Content({ page = "quick" }: { page?: Page }) {
                     setConfigurationExportError("");
                   })
                   .catch((error) => {
-                    console.warn("[SignalBar] configuration export failed", error);
+                    console.warn("[GabeCubeAura] configuration export failed", error);
                     setConfigurationExportError(error instanceof Error ? error.message : String(error));
                   })}
               >Export JSON</ButtonItem>
@@ -1250,7 +1573,7 @@ function Content({ page = "quick" }: { page?: Page }) {
               </div>
             </PanelSectionRow> : null}
             <PanelSectionRow><ButtonItem label="Import configuration JSON"
-              description="Choose a SignalBar export from Documents or another location. Replaces saved settings and per-game profiles."
+              description="Choose a GabeCubeAura export from Documents or another location. Replaces saved settings and per-game profiles."
               disabled={configurationBusy} onClick={() => void chooseConfigurationFile()}>Import JSON</ButtonItem></PanelSectionRow>
             <PanelSectionRow><ButtonItem label="Reset to defaults"
               description="Return to the shipped settings, clear per-game profiles and stop the personal timer. Confirmation required."
@@ -1341,36 +1664,39 @@ function Content({ page = "quick" }: { page?: Page }) {
   );
 }
 
-function SignalBarSettings() {
-  return <SidebarNavigation title="SignalBar settings" pages={[
-    { title: "Artwork", route: "/signalbar/settings/artwork", content: <Content page="artwork" /> },
-    { title: "Performance", route: "/signalbar/settings/performance", content: <Content page="performance" /> },
-    { title: "Playtime", route: "/signalbar/settings/countdown", content: <Content page="countdown" /> },
-    { title: "Light events", route: "/signalbar/settings/events", content: <Content page="events" /> },
-    { title: "Controllers", route: "/signalbar/settings/controllers", content: <Content page="controllers" /> },
-    { title: "Weather", route: "/signalbar/settings/weather", content: <Content page="weather" /> },
-    { title: "Compatibility", route: "/signalbar/settings/compatibility", content: <Content page="compatibility" /> },
+function GabeCubeAuraSettings() {
+  return <SidebarNavigation title="GabeCubeAura settings" pages={[
+    { title: "Display routing", route: "/gabecubeaura/settings/routing", content: <Content page="routing" /> },
+    { title: "Customization+", route: "/gabecubeaura/settings/customization", content: <Content page="customization" /> },
+    { title: "Artwork", route: "/gabecubeaura/settings/artwork", content: <Content page="artwork" /> },
+    { title: "Performance", route: "/gabecubeaura/settings/performance", content: <Content page="performance" /> },
+    { title: "Game launches", route: "/gabecubeaura/settings/launches", content: <Content page="launches" /> },
+    { title: "Playtime", route: "/gabecubeaura/settings/countdown", content: <Content page="countdown" /> },
+    { title: "Light events", route: "/gabecubeaura/settings/events", content: <Content page="events" /> },
+    { title: "Controllers", route: "/gabecubeaura/settings/controllers", content: <Content page="controllers" /> },
+    { title: "Weather", route: "/gabecubeaura/settings/weather", content: <Content page="weather" /> },
+    { title: "Compatibility", route: "/gabecubeaura/settings/compatibility", content: <Content page="compatibility" /> },
     "separator",
-    { title: "Advanced / debug", route: "/signalbar/settings/advanced", content: <Content page="advanced" /> },
+    { title: "Advanced / debug", route: "/gabecubeaura/settings/advanced", content: <Content page="advanced" /> },
   ]} />;
 }
 
 export default definePlugin(() => {
   // Decky invokes this initializer once when it loads the frontend bundle.
   // Runtime signals must start here, not when the user first opens the panel.
-  const runtime = startSignalBarRuntime();
+  const runtime = startGabeCubeAuraRuntime();
   const weatherTopBar = startWeatherTopBar();
-  routerHook.addRoute("/signalbar/settings", SignalBarSettings);
+  routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings);
   return {
-    name: "SignalBar",
-    titleView: <div className={staticClasses.Title}>SignalBar</div>,
+    name: "GabeCubeAura",
+    titleView: <div className={staticClasses.Title}>GabeCubeAura</div>,
     content: <Content />,
     icon: <TbCubeSpark />,
     alwaysRender: true,
     onDismount() {
       runtime.stop();
       weatherTopBar.stop();
-      routerHook.removeRoute("/signalbar/settings");
+      routerHook.removeRoute("/gabecubeaura/settings");
     },
   };
 });

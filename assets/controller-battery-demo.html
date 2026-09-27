@@ -57,8 +57,8 @@
     @media(max-width:390px){#sb-battery-v2 .stage{height:320px}#sb-battery-v2 .machine{width:min(77%,280px);margin-bottom:54px}#sb-battery-v2 .cube{height:208px}#sb-battery-v2 .fascia{height:48px}#sb-battery-v2 .stage-hud{left:8px;right:8px;top:9px;font-size:11px}#sb-battery-v2 .logic{gap:2px}}
     @media(prefers-reduced-motion:reduce){#sb-battery-v2 .light,#sb-battery-v2 .bloom{transition:none}}
   </style>
-  <section class="shell" aria-label="SignalBar controller battery visual concept">
-    <header class="top"><strong>SignalBar</strong><span>Controller battery · visual concepts · 17 LED</span></header>
+  <section class="shell" aria-label="GabeCubeAura controller battery visual concept">
+    <header class="top"><strong>GabeCubeAura</strong><span>Controller battery · visual concepts · 17 LED</span></header>
     <nav class="scenes" aria-label="Controller situations">
       <button class="scene cursor-interaction" type="button" data-scene="connect" aria-pressed="true">Connect</button>
       <button class="scene cursor-interaction" type="button" data-scene="persistent" aria-pressed="false">Battery gauge</button>
@@ -166,8 +166,8 @@
         els.forEach((e,i)=>e.style.background=colors[i]===OFF?'#303c47':colors[i]);
         if(brief){$('.status').textContent=t%7>5.6?'Base display restored':scenes[state.scene].status}
       }
-      function save(){if(globalThis.openai?.setWidgetState)globalThis.openai.setWidgetState({modelContent:{...state}}).catch(()=>{})}
-      const saved=globalThis.openai?.widgetState?.modelContent;
+      function save(){if(globalThis.gabecubeaura?.setWidgetState)globalThis.gabecubeaura.setWidgetState({modelContent:{...state}}).catch(()=>{})}
+      const saved=globalThis.gabecubeaura?.widgetState?.modelContent;
       if(saved&&typeof saved==='object'){
         if(scenes[saved.scene])state.scene=saved.scene;
         if(Number.isInteger(saved.variant)&&saved.variant>=0&&saved.variant<3)state.variant=saved.variant;

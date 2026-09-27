@@ -1,4 +1,4 @@
-"""SignalBar runtime orchestration.
+"""GabeCubeAura runtime orchestration.
 
 Data collection stays in providers, ownership policy in Arbiter/VanillaGuard,
 and all sysfs writes in Renderer.
@@ -6,6 +6,7 @@ and all sysfs writes in Renderer.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 
@@ -14,7 +15,10 @@ from signalbar.arbiter import Arbiter, VanillaGuard
 from signalbar.hardware import ValveLedHardware
 from signalbar.integration import LightEventLease, StripMineClaimReader
 from signalbar.models import GameState
-from signalbar.providers import ArtworkProvider, CountdownProvider, EventProvider, IdleProvider, PerformanceProvider
+from signalbar.providers import (
+    ArtworkProvider, CountdownProvider, CustomizationProvider, EventProvider, IdleProvider,
+    LaunchArtworkProvider, PerformanceProvider,
+)
 from signalbar.providers.controller import ControllerProvider
 from signalbar.providers.weather import WeatherProvider
 from signalbar.renderer import Renderer
@@ -30,6 +34,11 @@ class Engine:
         self.stripmine_claim = stripmine_claim or StripMineClaimReader()
         self._light_event_announced_at = 0.0
         self.artwork = ArtworkProvider(cache_path)
+        self.launch_palette = ArtworkProvider(
+            os.path.join(os.path.dirname(cache_path), "launch-artwork-cache.json")
+        )
+        self.launch_artwork = LaunchArtworkProvider()
+        self.customization = CustomizationProvider()
         self.countdown = CountdownProvider()
         self.performance = PerformanceProvider()
         self.events = EventProvider()
@@ -37,6 +46,10 @@ class Engine:
         self.controllers = ControllerProvider()
         self.weather = WeatherProvider()
         initial = settings.all()
+        self.launch_artwork.configure(
+            initial["launch_artwork_animation_enabled"], initial["launch_artwork_pattern"],
+            initial["launch_artwork_colour_count"], initial["launch_artwork_duration_seconds"],
+        )
         self.weather.configure(initial["weather_location"], initial["weather_display"], initial["weather_topbar_enabled"])
         self.idle = IdleProvider()
         self.arbiter = Arbiter()
@@ -69,11 +82,11 @@ class Engine:
 
     def _info(self, message):
         if self.log:
-            self.log.info(f"[SignalBar] {message}")
+            self.log.info(f"[GabeCubeAura] {message}")
 
     def _warn(self, message):
         if self.log:
-            self.log.warning(f"[SignalBar] {message}")
+            self.log.warning(f"[GabeCubeAura] {message}")
 
     def start(self):
         with self._lock:
@@ -92,6 +105,7 @@ class Engine:
             thread.join(timeout=2.0)
         with self._lock:
             self.events.clear_transients()
+            self.launch_artwork.cancel()
             self.events.clear_recording()
             self.controllers.clear()
             if self._renderer:
@@ -102,7 +116,7 @@ class Engine:
             self._owner = "Valve"
             self._decision = "none"
 
-    def set_game(self, appid=0, title=""):
+    def set_game(self, appid=0, title="", launch=False):
         try:
             appid = max(0, int(appid or 0))
         except (TypeError, ValueError):
@@ -115,26 +129,61 @@ class Engine:
                 # produced it. Never leak it into the next game or after exit.
                 self.countdown.stop("parental")
                 self.events.clear_recording()
+                self.launch_artwork.cancel()
             if changed or not self._game.running:
                 self.artwork.clear()
+                self.launch_palette.clear()
                 self._artwork_identity = None
             self.controllers.cancel_for_settings(self.settings.all(), self._game.running)
+            if changed and self._game.running and bool(launch):
+                self._refresh_launch_palettes(self._game.appid)
+                self.launch_artwork.arm(self._game.appid)
 
     def prepare_artwork(self, appid, fingerprint, filename="", source="hero"):
         artwork_settings = self.settings.artwork_for(appid)
         identity = (int(appid), str(fingerprint), str(filename or ""), str(source or "hero"))
         with self._lock:
             self._artwork_identity = identity
-            return self.artwork.activate_cached(
+            cached = self.artwork.activate_cached(
                 identity[0], identity[1], artwork_settings["mode"], artwork_settings["manual_y"]
             )
+            return cached
 
-    def submit_artwork(self, appid, fingerprint, colors, sample_y, filename="", source="hero"):
+    def submit_artwork(self, appid, fingerprint, colors, sample_y, dominant_palettes,
+                       filename="", source="hero"):
         artwork_settings = self.settings.artwork_for(appid)
         self.artwork.submit(
             appid, fingerprint, artwork_settings["mode"], artwork_settings["manual_y"],
-            colors, sample_y, filename, source,
+            colors, sample_y, filename, source, dominant_palettes,
         )
+
+    def prepare_launch_artwork(self, appid, fingerprint, filename="", source="hero"):
+        cached = self.launch_palette.activate_cached(appid, fingerprint, "auto", 0.34)
+        self._refresh_launch_palettes(appid)
+        return cached
+
+    def submit_launch_artwork(self, appid, fingerprint, colors, sample_y, dominant_palettes,
+                              filename="", source="hero"):
+        self.launch_palette.submit(
+            appid, fingerprint, "auto", 0.34, colors, sample_y,
+            filename, source, dominant_palettes,
+        )
+        self._refresh_launch_palettes(appid)
+
+    def _refresh_launch_palettes(self, appid):
+        profile = self.settings.launch_artwork_for(appid)
+        palettes = (
+            profile["custom_palettes"]
+            if profile["palette_mode"] == "custom"
+            else self.launch_palette.dominant_palettes(appid)
+        )
+        self.launch_artwork.set_palettes(appid, palettes)
+
+    def update_launch_artwork_settings(self, appid, changes):
+        profile = self.settings.update_launch_artwork(appid, changes)
+        self._refresh_launch_palettes(appid)
+        self.launch_artwork.cancel()
+        return profile
 
     def update_artwork_settings(self, appid, changes):
         artwork_settings = self.settings.update_artwork(appid, changes)
@@ -219,6 +268,22 @@ class Engine:
 
     def preview_countdown(self):
         self.countdown.start("preview", 15.0, total_seconds=15.0, label="Preview")
+
+    def preview_launch_artwork(self):
+        values = self.settings.all()
+        if values["mode"] == "disabled":
+            return False
+        with self._lock:
+            appid = self._game.appid
+        if appid <= 0:
+            return False
+        return self.launch_artwork.arm(appid, preview=True)
+
+    def preview_customization(self):
+        values = self.settings.all()
+        if values["mode"] == "disabled":
+            return False
+        return self.customization.preview()
 
     def trigger_event(self, kind, preview=False, variant=""):
         values = self.settings.all()
@@ -339,13 +404,17 @@ class Engine:
         self._apply_settings(values, changes)
         return values
 
-    def import_configuration(self, global_values, display_profiles, artwork_profiles):
+    def import_configuration(self, global_values, display_profiles, artwork_profiles,
+                             launch_artwork_profiles=None):
         previous = self.settings.all()
-        values = self.settings.replace_configuration(global_values, display_profiles, artwork_profiles)
+        values = self.settings.replace_configuration(
+            global_values, display_profiles, artwork_profiles, launch_artwork_profiles,
+        )
         changes = {key: value for key, value in values.items() if previous.get(key) != value}
         self._apply_settings(values, changes)
         self.countdown.stop("free")
         self.weather.stop_preview()
+        self.customization.stop_preview()
         self.controllers.clear_transients()
         self.events.clear_transients()
         with self._lock:
@@ -356,10 +425,30 @@ class Engine:
                                              artwork_settings["mode"], artwork_settings["manual_y"])
         return values
 
+    def update_display(self, appid, mode):
+        previous = self.settings.all()
+        result = self.settings.update_display(appid, mode)
+        values = self.settings.all()
+        changes = {key: value for key, value in values.items() if previous.get(key) != value}
+        self._apply_settings(values, changes)
+        return result
+
     def reset_configuration(self):
         return self.import_configuration({}, {}, {})
 
     def _apply_settings(self, values, changes):
+        self.launch_artwork.configure(
+            values["launch_artwork_animation_enabled"], values["launch_artwork_pattern"],
+            values["launch_artwork_colour_count"], values["launch_artwork_duration_seconds"],
+        )
+        if any(key in changes for key in (
+            "launch_artwork_pattern", "launch_artwork_colour_count",
+            "launch_artwork_duration_seconds", "launch_artwork_source",
+        )):
+            self.launch_artwork.cancel()
+        if "launch_artwork_source" in changes:
+            self.launch_palette.clear()
+            self.launch_artwork.clear_palettes()
         self.weather.configure(values["weather_location"], values["weather_display"], values["weather_topbar_enabled"])
         self.events.set_variants(values)
         with self._lock:
@@ -382,6 +471,8 @@ class Engine:
                     self.events.cancel_kinds(kinds)
         if values["mode"] == "disabled":
             self.controllers.clear_transients()
+            self.launch_artwork.cancel()
+            self.customization.stop_preview()
         if "parental_countdown_enabled" in changes and not values["parental_countdown_enabled"]:
             # Turning the feature off is an immediate cancellation, not only
             # a visual filter. Later callbacks are ignored until re-enabled.
@@ -402,10 +493,14 @@ class Engine:
 
     @staticmethod
     def _stripmine_family(provider):
+        if provider.startswith("launch-artwork"):
+            return "game_launches"
         if provider.startswith("artwork"):
             return "artwork"
         if provider.startswith("performance"):
             return "performance"
+        if provider.startswith("customization"):
+            return "customization"
         if provider.startswith("weather"):
             return "weather"
         if provider.startswith("controller"):
@@ -420,7 +515,7 @@ class Engine:
             return "stripmine"
         family = cls._stripmine_family(provider)
         if family == "system":
-            # Countdowns and unknown safety providers keep SignalBar priority.
+            # Countdowns and unknown safety providers keep GabeCubeAura priority.
             return "signalbar"
         return values.get(f"stripmine_priority_{family}", "stripmine")
 
@@ -474,7 +569,19 @@ class Engine:
                     game = self._game
                     explicit = now < self._steam_active_until
                     explicit_reason = self._steam_reason
-                values["mode"] = self.settings.display_for(game.appid)["mode"]
+                display = self.settings.display_for(game.appid)
+                values["mode"] = display["mode"]
+                current_display = display["selected"]
+                provider_values = dict(values)
+                provider_values["controller_battery_display"] = (
+                    "everywhere" if current_display == "controller" else "off"
+                )
+                provider_values["controller_charging_display"] = (
+                    "everywhere" if current_display == "controller" else "off"
+                )
+                provider_values["weather_display"] = (
+                    "everywhere" if current_display == "weather" else "off"
+                )
                 signature = hardware.read_signature()
                 # A new native write during our animation ends that animation
                 # immediately; otherwise the two writers would fight each tick.
@@ -528,20 +635,53 @@ class Engine:
                 if event_interrupted:
                     self.events.clear_transients()
                     self.controllers.clear_transients()
+                    self.launch_artwork.cancel()
                 event = self.events.output()
                 controller_event = self.controllers.event_output()
-                controller_base = self.controllers.persistent_output(values, game.running)
-                weather_base = self.weather.output(values, game.running, now)
+                controller_base = self.controllers.persistent_output(provider_values, game.running)
+                weather_base = self.weather.output(provider_values, game.running, now)
+                customization_base = self.customization.output(
+                    values,
+                    enabled=(current_display == "customization" and values["mode"] != "disabled"),
+                )
+                brief_alert = any(output is not None and output.frame is not None for output in (
+                    event, controller_event,
+                ))
+                launch_display_allowed = (
+                    self.launch_artwork.previewing
+                    or values["mode"] != "disabled" and game.running
+                )
+                launch_ownership_allowed = (
+                    not stripmine_active
+                    or values["stripmine_priority_game_launches"] == "signalbar"
+                )
+                if self.launch_artwork.active and (
+                    signal_critical or not launch_display_allowed or not launch_ownership_allowed
+                    or not (allowed or stripmine_active)
+                ):
+                    self.launch_artwork.cancel()
+                launch_artwork = self.launch_artwork.output(
+                    game.appid,
+                    allow_start=(
+                        launch_display_allowed and not signal_critical and not brief_alert
+                        and (allowed or stripmine_active) and launch_ownership_allowed
+                    ),
+                    paused=brief_alert,
+                )
                 # Moving event waves need more than ten samples per second to
                 # visibly visit all 17 positions. Normal providers stay at
                 # the conservative 10 Hz cadence.
-                interval = 0.06 if event.frame is not None or controller_event.frame is not None else 0.10
+                interval = 0.06 if any(output.frame is not None for output in (
+                    event, controller_event, launch_artwork, customization_base,
+                )) else 0.10
                 decision = self.arbiter.choose(
                     mode=values["mode"], guard_allows=allowed or stripmine_active, game=game,
                     performance=performance, artwork=artwork, idle=self.idle.output(),
                     signal=signal, event=event, signal_critical=signal_critical,
                     controller_event=controller_event, controller_base=controller_base,
                     weather_base=weather_base,
+                    customization_base=customization_base,
+                    launch_artwork=launch_artwork,
                     recording_marker=(
                         self.events.recording and values["events_enabled"]
                         and values["event_recording_enabled"]
@@ -596,7 +736,7 @@ class Engine:
                     owner = self._owner
                     suspension = "waiting for companion LED handoff"
                 elif decision.frame is not None:
-                    is_event = decision.provider.startswith(("event:", "controller:"))
+                    is_event = decision.provider.startswith(("event:", "controller:", "launch-artwork:"))
                     if is_event and not allowed:
                         event_preempted_valve = True
                     elif not is_event:
@@ -604,7 +744,7 @@ class Engine:
                     wrote = renderer.render(decision.frame)
                     if wrote:
                         guard.note_own_write(renderer.last_signature)
-                    owner = "SignalBar"
+                    owner = "GabeCubeAura"
                     suspension = ""
                     event_was_active = is_event
                 else:
@@ -629,7 +769,7 @@ class Engine:
                     # Do not report the event as physically active while the
                     # cooperative handoff is still pending. Besides being more
                     # truthful in diagnostics, this prevents callers from
-                    # racing a native write against SignalBar's first frame.
+                    # racing a native write against GabeCubeAura's first frame.
                     self._decision = (
                         "companion:handoff"
                         if needs_handoff and not handoff_ready
@@ -665,10 +805,21 @@ class Engine:
             and self.stripmine_claim.active()
         )
         sample = self.performance.sample
-        art = self.artwork.status()
+        art = self.artwork.status(values["launch_artwork_colour_count"])
         with self._lock:
+            launch_artwork_status = self.launch_artwork.status(self._game.appid)
             display = self.settings.display_for(self._game.appid)
             values["mode"] = display["mode"]
+            status_values = dict(values)
+            status_values["controller_battery_display"] = (
+                "everywhere" if display["selected"] == "controller" else "off"
+            )
+            status_values["controller_charging_display"] = (
+                "everywhere" if display["selected"] == "controller" else "off"
+            )
+            status_values["weather_display"] = (
+                "everywhere" if display["selected"] == "weather" else "off"
+            )
             artwork_settings = self.settings.artwork_for(self._game.appid)
             countdown = self.countdown.status(
                 colour=values["countdown_colour"],
@@ -723,12 +874,13 @@ class Engine:
                     values["temperature_custom_hot"],
                 ),
             )
-            controller_status = self.controllers.status(values, self._game.running)
-            weather_status = self.weather.status(values, self._game.running)
+            controller_status = self.controllers.status(status_values, self._game.running)
+            weather_status = self.weather.status(status_values, self._game.running)
+            customization_status = self.customization.status(values)
             return {
                 "version": __version__,
                 "available": self._available,
-                "active": self._owner == "SignalBar",
+                "active": self._owner == "GabeCubeAura",
                 "owner": self._owner,
                 "provider": self._decision,
                 "suspension_reason": self._suspension_reason,
@@ -736,6 +888,10 @@ class Engine:
                 "mode": values["mode"],
                 "default_mode": display["default"],
                 "display_override": display["override"],
+                "signalbar_enabled": values["signalbar_enabled"],
+                "home_display": values["home_display"],
+                "game_display": values["game_display"],
+                "current_display": display["selected"],
                 "performance_metric": values["performance_metric"],
                 "performance_smoothing": values["performance_smoothing"],
                 "performance_always": values["performance_always"],
@@ -751,6 +907,21 @@ class Engine:
                 "artwork_default_mode": values["artwork_mode"],
                 "artwork_default_manual_y": values["artwork_manual_y"],
                 "artwork_default_source": values["artwork_source"],
+                "launch_artwork_animation_enabled": values["launch_artwork_animation_enabled"],
+                "launch_artwork_pattern": values["launch_artwork_pattern"],
+                "launch_artwork_colour_count": values["launch_artwork_colour_count"],
+                "launch_artwork_duration_seconds": values["launch_artwork_duration_seconds"],
+                "launch_artwork_source": values["launch_artwork_source"],
+                "launch_artwork_palette_mode": self.settings.launch_artwork_for(self._game.appid)["palette_mode"],
+                "launch_artwork_custom_palettes": self.settings.launch_artwork_for(self._game.appid)["custom_palettes"],
+                "customization_pattern": values["customization_pattern"],
+                "customization_colour_count": values["customization_colour_count"],
+                "customization_colour_1": values["customization_colour_1"],
+                "customization_colour_2": values["customization_colour_2"],
+                "customization_colour_3": values["customization_colour_3"],
+                "customization_brightness": values["customization_brightness"],
+                "customization_speed": values["customization_speed"],
+                "customization_direction": values["customization_direction"],
                 "cool_temp_c": values["cool_temp_c"],
                 "hot_temp_c": values["hot_temp_c"],
                 "reverse_led_order": values["reverse_led_order"],
@@ -800,8 +971,11 @@ class Engine:
                 "stripmine_priority_weather": values["stripmine_priority_weather"],
                 "stripmine_priority_controller": values["stripmine_priority_controller"],
                 "stripmine_priority_light_events": values["stripmine_priority_light_events"],
+                "stripmine_priority_game_launches": values["stripmine_priority_game_launches"],
+                "stripmine_priority_customization": values["stripmine_priority_customization"],
                 **{key: values[key] for key in values if key.startswith("weather_") and key.endswith("_variant")},
                 "weather": weather_status,
+                "customization": customization_status,
                 "controllers": controller_status,
                 "events": self.events.status(),
                 "game": {"appid": self._game.appid, "title": self._game.title},
@@ -816,6 +990,7 @@ class Engine:
                     "physical_lit": sum(pixel != (0, 0, 0) for pixel in physical_performance),
                 },
                 "artwork": art,
+                "launch_artwork": launch_artwork_status,
                 "countdown": countdown,
                 "debug": {
                     "led_path": renderer.hardware.device_path if renderer else "/sys/class/leds/valve-leds[*]",

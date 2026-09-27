@@ -50,9 +50,10 @@ function titleFor(appid: number): string {
   }
 }
 
-class SignalBarRuntime {
+class GabeCubeAuraRuntime {
   private alive = false;
-  private desired = { appid: 0, title: "", source: "startup" };
+  private desired = { appid: 0, title: "", source: "startup", launchSequence: 0 };
+  private baselineEstablished = false;
   private confirmedKey = "";
   private syncing = false;
   private artworkGeneration = 0;
@@ -78,10 +79,13 @@ class SignalBarRuntime {
   start() {
     if (this.alive) return;
     this.alive = true;
-    this.registerSteamEvents();
     this.observeRunningApp("startup");
+    // Establish the observed AppID before lifetime notifications are attached.
+    // Some Steam builds replay the currently running session immediately.
+    this.baselineEstablished = true;
+    this.registerSteamEvents();
     this.pollTimer = window.setInterval(() => this.observeRunningApp("poll fallback"), 2000);
-    console.log("[SignalBar] background runtime started");
+    console.log("[GabeCubeAura] background runtime started");
   }
 
   stop() {
@@ -104,7 +108,7 @@ class SignalBarRuntime {
     this.lastServerCommentAt = 0;
     void this.controllerMonitor?.stop().then(() => resetControllers()).catch(console.warn);
     void setSteamActivity(false, "").catch(() => undefined);
-    console.log("[SignalBar] background runtime stopped");
+    console.log("[GabeCubeAura] background runtime stopped");
   }
 
   private observeRunningApp(source: string) {
@@ -120,12 +124,17 @@ class SignalBarRuntime {
   private requestGame(appid: number, title: string, source: string) {
     if (!this.alive) return;
     const normalized = normalizeAppId(appid);
+    const previousAppId = this.desired.appid;
+    const changedApp = normalized !== previousAppId;
+    const isLaunch = normalized > 0 && changedApp && this.baselineEstablished && (
+      source === "Steam lifetime event" || previousAppId === 0 && source === "poll fallback"
+    );
     const next = {
       appid: normalized,
       title: normalized > 0 ? String(title || "") : "",
       source: String(source || "unknown"),
+      launchSequence: this.desired.launchSequence + (isLaunch ? 1 : 0),
     };
-    const changedApp = next.appid !== this.desired.appid;
     this.desired = next;
     this.reportedAppId = next.appid;
     if (changedApp) {
@@ -140,17 +149,20 @@ class SignalBarRuntime {
     try {
       while (this.alive) {
         const current = { ...this.desired };
-        const key = `${current.appid}:${current.title}`;
+        const key = `${current.appid}:${current.title}:${current.launchSequence}`;
         if (key === this.confirmedKey) break;
         try {
           const syncStartedAt = Date.now();
-          const status = await gameChanged(current.appid, current.title);
+          const launch = current.launchSequence !== this.desired.launchSequence
+            ? false : current.launchSequence > 0 && current.appid > 0;
+          const status = await gameChanged(current.appid, current.title, launch);
           const syncMs = Date.now() - syncStartedAt;
           this.confirmedKey = key;
+          this.baselineEstablished = true;
           this.parentalWaitStartedAt = current.appid > 0 ? Date.now() : 0;
           void reportRuntimeDiagnostic(
             "game_synced", current.appid, current.source, syncMs,
-          ).catch((error) => console.warn("[SignalBar] runtime diagnostic failed", error));
+          ).catch((error) => console.warn("[GabeCubeAura] runtime diagnostic failed", error));
           // Register only after the backend has accepted the new AppID. Some
           // Steam builds invoke this callback immediately on registration.
           this.registerParentalSignal(current.appid);
@@ -159,7 +171,7 @@ class SignalBarRuntime {
             void this.syncArtwork(current.appid, status, generation);
           }
         } catch (error) {
-          console.warn("[SignalBar] background game sync failed; retrying", error);
+          console.warn("[GabeCubeAura] background game sync failed; retrying", error);
           this.scheduleRetry();
           break;
         }
@@ -178,8 +190,21 @@ class SignalBarRuntime {
   }
 
   private async syncArtwork(appid: number, status: Status, generation: number) {
+    await Promise.all([
+      this.syncArtworkPurpose(appid, status, generation, status.artwork_source, "artwork"),
+      this.syncArtworkPurpose(appid, status, generation, status.launch_artwork_source, "launch"),
+    ]);
+  }
+
+  private async syncArtworkPurpose(
+    appid: number,
+    status: Status,
+    generation: number,
+    source: Status["artwork_source"],
+    purpose: "artwork" | "launch",
+  ) {
     try {
-      const artwork = await getArtwork(appid, status.artwork_source);
+      const artwork = await getArtwork(appid, source, purpose);
       if (!this.alive || generation !== this.artworkGeneration || this.desired.appid !== appid) return;
       if (!artwork.found || !artwork.data_uri || !artwork.fingerprint || artwork.cached) return;
       const result = await sampleArtwork(artwork.data_uri, status.artwork_mode, status.artwork_manual_y);
@@ -189,11 +214,13 @@ class SignalBarRuntime {
         artwork.fingerprint,
         result.colors,
         result.y,
+        result.dominantPalettes,
         artwork.filename ?? "",
-        artwork.source ?? status.artwork_source,
+        artwork.source ?? source,
+        purpose,
       );
     } catch (error) {
-      console.warn("[SignalBar] background artwork sampling failed", error);
+      console.warn(`[GabeCubeAura] background ${purpose} artwork sampling failed`, error);
     }
   }
 
@@ -213,14 +240,14 @@ class SignalBarRuntime {
           this.parentalWaitStartedAt = 0;
           void reportRuntimeDiagnostic(
             "parental_received", appid, "Steam callback", callbackDelay,
-          ).catch((error) => console.warn("[SignalBar] runtime diagnostic failed", error));
+          ).catch((error) => console.warn("[GabeCubeAura] runtime diagnostic failed", error));
           void reportParentalMinutes(value).catch((error) => {
-            console.warn("[SignalBar] parental playtime signal failed", error);
+            console.warn("[GabeCubeAura] parental playtime signal failed", error);
           });
         },
       );
     } catch (error) {
-      console.warn("[SignalBar] Steam Families playtime hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam Families playtime hook unavailable", error);
     }
   }
 
@@ -240,7 +267,7 @@ class SignalBarRuntime {
         }
       });
     } catch (error) {
-      console.warn("[SignalBar] Steam game hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam game hook unavailable", error);
     }
     try {
       this.resumeRegistration = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(() => {
@@ -250,7 +277,7 @@ class SignalBarRuntime {
         this.requestGame(0, "", "resume from suspend");
       });
     } catch (error) {
-      console.warn("[SignalBar] Steam resume hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam resume hook unavailable", error);
     }
     try {
       this.downloadRegistration = SteamClient?.Downloads?.RegisterForDownloadOverview?.((overview: any) => {
@@ -258,14 +285,14 @@ class SignalBarRuntime {
         void setSteamActivity(Boolean(active), active ? "Steam download activity" : "").catch(console.warn);
       });
     } catch (error) {
-      console.warn("[SignalBar] Steam download hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam download hook unavailable", error);
     }
   }
 
   private emitLightEvent(kind: LightEvent) {
     if (!this.alive) return;
     void triggerEvent(kind, false, "").catch((error) => {
-      console.warn(`[SignalBar] ${kind} event was not delivered`, error);
+      console.warn(`[GabeCubeAura] ${kind} event was not delivered`, error);
     });
   }
 
@@ -275,7 +302,7 @@ class SignalBarRuntime {
         if (screenshotWasCaptured(notice)) this.emitLightEvent("screenshot");
       });
     } catch (error) {
-      console.warn("[SignalBar] screenshot hook unavailable", error);
+      console.warn("[GabeCubeAura] screenshot hook unavailable", error);
     }
     try {
       // The callback's index identifies a notification-list position, not a
@@ -296,7 +323,7 @@ class SignalBarRuntime {
         },
       );
     } catch (error) {
-      console.warn("[SignalBar] Steam notification hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam notification hook unavailable", error);
     }
     this.communityNotificationObserver.reset();
     this.lastNativeCommentAt = 0;
@@ -314,7 +341,7 @@ class SignalBarRuntime {
       if (!this.communityNotificationStore) {
         this.communityNotificationStore = findModuleExport(isSteamServerNotificationStore);
         if (this.communityNotificationStore) {
-          console.log("[SignalBar] Steam Community notification centre connected");
+          console.log("[GabeCubeAura] Steam Community notification centre connected");
         }
       }
       const events = this.communityNotificationObserver.scan(this.communityNotificationStore);
@@ -328,7 +355,7 @@ class SignalBarRuntime {
         this.emitLightEvent("notification");
       });
     } catch (error) {
-      console.warn("[SignalBar] Steam Community notification hook unavailable", error);
+      console.warn("[GabeCubeAura] Steam Community notification hook unavailable", error);
     }
   }
 
@@ -347,8 +374,8 @@ class SignalBarRuntime {
   }
 }
 
-export function startSignalBarRuntime() {
-  const runtime = new SignalBarRuntime();
+export function startGabeCubeAuraRuntime() {
+  const runtime = new GabeCubeAuraRuntime();
   runtime.start();
   return runtime;
 }

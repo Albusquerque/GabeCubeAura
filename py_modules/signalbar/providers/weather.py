@@ -76,7 +76,7 @@ def _open_with_system_trust(request, first_error):
 
 
 def _read_json(url):
-    request = Request(url, headers={"User-Agent": "SignalBar/0.6 weather beta"})
+    request = Request(url, headers={"User-Agent": "GabeCubeAura/1.0 weather"})
     try:
         response = urlopen(request, timeout=6)
     except URLError as error:

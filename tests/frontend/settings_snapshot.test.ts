@@ -6,9 +6,18 @@ import type { Status } from "../../src/types";
 const sampleStatus = {
     version: "0.5.0-beta.9",
     default_mode: "artwork", mode: "performance", display_override: "performance",
+    signalbar_enabled: true, home_display: "controller", game_display: "performance",
+    current_display: "performance",
     game: { appid: 42, title: "Example Game" },
     artwork_default_source: "hero", artwork_default_mode: "auto", artwork_default_manual_y: .5,
     artwork_source: "header", artwork_mode: "manual", artwork_manual_y: .83, artwork_custom: true,
+    launch_artwork_animation_enabled: true, launch_artwork_pattern: "crescendo",
+    launch_artwork_colour_count: 2, launch_artwork_duration_seconds: 20,
+    launch_artwork_source: "hero", launch_artwork_palette_mode: "custom",
+    launch_artwork_custom_palettes: { "2": [[255, 220, 0], [0, 220, 255]], "3": [[255, 220, 0], [0, 220, 255], [255, 0, 90]] },
+    customization_pattern: "steady", customization_colour_count: 2,
+    customization_colour_1: [255, 200, 0], customization_colour_2: [0, 180, 255], customization_colour_3: [255, 0, 120],
+    customization_brightness: 128, customization_speed: 50, customization_direction: "forward",
     performance_metric: "mixed", performance_smoothing: "balanced", performance_always: true,
     mixed_direction: "mirrored", temperature_palette: "custom",
     cool_temp_c: 45, hot_temp_c: 80,
@@ -37,11 +46,12 @@ const sampleStatus = {
 test("debug snapshot includes every settings group and distinguishes defaults from the running game's choices", () => {
   const snapshot = buildSettingsSnapshot(sampleStatus);
   assert.deepEqual(snapshot.map((section) => section.title),
-    ["Display", "Artwork", "Performance", "Playtime", "Light events", "Controllers", "Weather", "Advanced"]);
+    ["Display", "Customization+", "Artwork", "Performance", "Game launches", "Playtime", "Light events", "Controllers", "Weather", "Advanced"]);
   const text = snapshot.flatMap((section) => section.lines).join("\n");
   for (const expected of ["Example Game", "Library Hero", "Library Header", "83%", "CPU + GPU",
     "Balanced", "Mirrored", "#0C2238", "2 h", "Centre echo", "Return + confetti",
-    "Expanding echoes", "Continuous on Home", "Bright tip", "#00C819", "Weather LED brightness 65%", "Extra dark LEDs 2"]) {
+    "Expanding echoes", "Continuous on Home", "Bright tip", "#00C819", "Pattern steady", "Brightness 128/255",
+    "Weather LED brightness 65%", "Extra dark LEDs 2"]) {
     assert.ok(text.includes(expected), expected);
   }
   assert.ok(!text.includes("/private/device/path"));
@@ -52,21 +62,22 @@ test("snapshot shows Home defaults without inventing a game-specific profile", (
   const status = { ...sampleStatus,
     game: { appid: 0, title: "" },
     default_mode: "artwork", mode: "artwork", display_override: "inherit",
+    home_display: "steam", game_display: "artwork", current_display: "steam",
     artwork_default_source: "hero", artwork_default_mode: "auto", artwork_default_manual_y: .5,
     artwork_source: "hero", artwork_mode: "auto", artwork_manual_y: .5, artwork_custom: false,
   } as Status;
   const snapshot = buildSettingsSnapshot(status);
   assert.match(snapshot[0].lines[1], /^Home/);
-  assert.match(snapshot[1].lines[1], /^This game: none/);
+  assert.match(snapshot[2].lines[1], /^This game: none/);
 });
 
-test("snapshot names the Signals only display mode", () => {
+test("snapshot names the GabeCubeAura Off display route", () => {
   const status = { ...sampleStatus,
     game: { appid: 42, title: "StripMine" },
-    default_mode: "events", mode: "events", display_override: "performance",
+    game_display: "steam", current_display: "steam", mode: "events", display_override: "inherit",
   } as Status;
   const snapshot = buildSettingsSnapshot(status);
-  assert.ok(snapshot[0].lines[0].includes("Signals only"));
+  assert.ok(snapshot[0].lines[0].includes("GabeCubeAura Off"));
 });
 
 test("weather snapshot lists retained loops without removed temperature controls", () => {

@@ -16,7 +16,7 @@ DEFAULT_STRIPMINE_CLAIM = "/run/decky/stripmine-led-claim.json"
 
 
 class LightEventLease:
-    """Publish a short renewable lease while SignalBar renders a Light event."""
+    """Publish a short renewable lease while GabeCubeAura renders a Light event."""
 
     def __init__(self, path=None, clock=time.time, ttl_s=0.75, ack_path=None):
         self.path = Path(path or os.environ.get(LEASE_ENV, DEFAULT_LIGHT_EVENT_LEASE))

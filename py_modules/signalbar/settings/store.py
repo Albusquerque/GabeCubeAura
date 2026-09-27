@@ -8,9 +8,22 @@ import os
 import threading
 from copy import deepcopy
 
+from signalbar.providers.customization import CUSTOMIZATION_PATTERNS
+
 DEFAULTS = {
     "mode": "performance",
+    "signalbar_enabled": True,
+    "home_display": "controller",
+    "game_display": "performance",
     "display_profiles": {},
+    "customization_pattern": "steady",
+    "customization_colour_count": 1,
+    "customization_colour_1": [255, 120, 24],
+    "customization_colour_2": [0, 200, 255],
+    "customization_colour_3": [180, 48, 255],
+    "customization_brightness": 128,
+    "customization_speed": 50,
+    "customization_direction": "forward",
     # Retained only to migrate v0.1/v0.2 Automatic configurations.
     "performance_enabled": True,
     "performance_metric": "mixed",
@@ -25,6 +38,12 @@ DEFAULTS = {
     "artwork_manual_y": 0.34,
     "artwork_source": "hero",
     "artwork_profiles": {},
+    "launch_artwork_animation_enabled": False,
+    "launch_artwork_pattern": "arpege-crossed",
+    "launch_artwork_colour_count": 2,
+    "launch_artwork_duration_seconds": 8,
+    "launch_artwork_source": "hero",
+    "launch_artwork_profiles": {},
     "cool_temp_c": 45.0,
     "hot_temp_c": 78.0,
     "reverse_led_order": True,
@@ -86,13 +105,23 @@ DEFAULTS = {
     "stripmine_priority_weather": "stripmine",
     "stripmine_priority_controller": "stripmine",
     "stripmine_priority_light_events": "signalbar",
+    "stripmine_priority_game_launches": "signalbar",
+    "stripmine_priority_customization": "stripmine",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
 }
 
-VALID_MODES = {"artwork", "performance", "events", "disabled"}
+VALID_MODES = {"artwork", "performance", "customization", "events", "disabled"}
+VALID_HOME_DISPLAYS = {"steam", "customization", "performance", "weather", "controller"}
+VALID_GAME_DISPLAYS = {"steam", "customization", "artwork", "performance", "weather", "controller"}
 VALID_ARTWORK_MODES = {"auto", "center", "lower", "manual"}
 VALID_ARTWORK_SOURCES = {"hero", "header", "capsule"}
+VALID_LAUNCH_ARTWORK_PATTERNS = {
+    "arpege-crossed", "two-hands", "legato", "nocturne", "crescendo",
+    "color-wipe", "scanner", "theater-chase", "twinkle", "ripple",
+}
+VALID_CUSTOMIZATION_PATTERNS = CUSTOMIZATION_PATTERNS
+VALID_CUSTOMIZATION_DIRECTIONS = {"forward", "reverse"}
 VALID_PERFORMANCE_METRICS = {"cpu", "gpu", "mixed"}
 VALID_PERFORMANCE_SMOOTHING = {"responsive", "balanced", "smooth"}
 VALID_MIXED_DIRECTIONS = {"same", "mirrored"}
@@ -177,6 +206,37 @@ class SettingsStore:
                             self._data["controller_charging_mode"] = (
                                 "brief" if raw.get("controller_charging_enabled", True) else "off"
                             )
+                    # v0.7.x stored one display mode plus independent context
+                    # switches. Preserve the effective Home/game result once,
+                    # then make the new routing fields authoritative.
+                    if "signalbar_enabled" not in raw:
+                        self._data["signalbar_enabled"] = raw.get("mode") != "disabled"
+                    if "home_display" not in raw:
+                        weather = raw.get("weather_display", "off")
+                        controller = raw.get("controller_battery_display", "off")
+                        if weather in {"home", "everywhere"}:
+                            self._data["home_display"] = "weather"
+                        elif controller in {"home", "everywhere"}:
+                            self._data["home_display"] = "controller"
+                        elif raw.get("mode") == "performance" and raw.get("performance_always", True):
+                            self._data["home_display"] = "performance"
+                        else:
+                            self._data["home_display"] = "steam"
+                    if "game_display" not in raw:
+                        weather = raw.get("weather_display", "off")
+                        controller = raw.get("controller_battery_display", "off")
+                        if weather in {"game", "everywhere"}:
+                            self._data["game_display"] = "weather"
+                        elif controller in {"game", "everywhere"}:
+                            self._data["game_display"] = "controller"
+                        elif raw.get("mode") == "automatic":
+                            self._data["game_display"] = (
+                                "performance" if raw.get("performance_enabled", True) else "artwork"
+                            )
+                        elif raw.get("mode") in {"artwork", "performance"}:
+                            self._data["game_display"] = raw["mode"]
+                        else:
+                            self._data["game_display"] = "steam"
             except (OSError, ValueError, TypeError):
                 pass
             self._validate()
@@ -188,6 +248,8 @@ class SettingsStore:
             "stripmine_priority_artwork", "stripmine_priority_performance",
             "stripmine_priority_weather", "stripmine_priority_controller",
             "stripmine_priority_light_events",
+            "stripmine_priority_game_launches",
+            "stripmine_priority_customization",
         ):
             if self._data[key] not in VALID_COMPANION_PRIORITIES:
                 self._data[key] = DEFAULTS[key]
@@ -197,10 +259,46 @@ class SettingsStore:
             self._data["mode"] = "performance" if self._data["performance_enabled"] else "artwork"
         elif self._data["mode"] not in VALID_MODES:
             self._data["mode"] = DEFAULTS["mode"]
+        self._data["signalbar_enabled"] = bool(self._data["signalbar_enabled"])
+        if self._data["home_display"] not in VALID_HOME_DISPLAYS:
+            self._data["home_display"] = DEFAULTS["home_display"]
+        if self._data["game_display"] not in VALID_GAME_DISPLAYS:
+            self._data["game_display"] = DEFAULTS["game_display"]
+        if self._data["customization_pattern"] not in VALID_CUSTOMIZATION_PATTERNS:
+            self._data["customization_pattern"] = DEFAULTS["customization_pattern"]
+        if self._data["customization_direction"] not in VALID_CUSTOMIZATION_DIRECTIONS:
+            self._data["customization_direction"] = DEFAULTS["customization_direction"]
+        for key, lower, upper in (
+            ("customization_colour_count", 1, 3),
+            ("customization_brightness", 34, 255),
+            ("customization_speed", 1, 100),
+        ):
+            try:
+                self._data[key] = max(lower, min(upper, int(round(float(self._data[key])))))
+            except (TypeError, ValueError, OverflowError):
+                self._data[key] = DEFAULTS[key]
         if self._data["artwork_mode"] not in VALID_ARTWORK_MODES:
             self._data["artwork_mode"] = DEFAULTS["artwork_mode"]
         if self._data["artwork_source"] not in VALID_ARTWORK_SOURCES:
             self._data["artwork_source"] = DEFAULTS["artwork_source"]
+        if self._data["launch_artwork_source"] not in VALID_ARTWORK_SOURCES:
+            self._data["launch_artwork_source"] = DEFAULTS["launch_artwork_source"]
+        self._data["launch_artwork_animation_enabled"] = bool(
+            self._data["launch_artwork_animation_enabled"]
+        )
+        if self._data["launch_artwork_pattern"] not in VALID_LAUNCH_ARTWORK_PATTERNS:
+            self._data["launch_artwork_pattern"] = DEFAULTS["launch_artwork_pattern"]
+        try:
+            colour_count = int(self._data["launch_artwork_colour_count"])
+            self._data["launch_artwork_colour_count"] = colour_count if colour_count in (2, 3) else 2
+        except (TypeError, ValueError, OverflowError):
+            self._data["launch_artwork_colour_count"] = DEFAULTS["launch_artwork_colour_count"]
+        try:
+            self._data["launch_artwork_duration_seconds"] = max(
+                3, min(45, int(round(float(self._data["launch_artwork_duration_seconds"]))))
+            )
+        except (TypeError, ValueError, OverflowError):
+            self._data["launch_artwork_duration_seconds"] = DEFAULTS["launch_artwork_duration_seconds"]
         if self._data["performance_metric"] not in VALID_PERFORMANCE_METRICS:
             self._data["performance_metric"] = DEFAULTS["performance_metric"]
         if self._data["performance_smoothing"] not in VALID_PERFORMANCE_SMOOTHING:
@@ -212,6 +310,7 @@ class SettingsStore:
         for key in (
             "temperature_custom_cool", "temperature_custom_middle", "temperature_custom_hot",
             "controller_colour_normal", "controller_colour_medium", "controller_colour_low", "controller_colour_charging",
+            "customization_colour_1", "customization_colour_2", "customization_colour_3",
         ):
             value = self._data.get(key)
             if not isinstance(value, (list, tuple)) or len(value) != 3:
@@ -233,7 +332,7 @@ class SettingsStore:
                     appid = int(raw_id)
                 except (TypeError, ValueError, OverflowError):
                     continue
-                if 0 < appid <= 0xffffffff and isinstance(mode, str) and mode in {"artwork", "performance"}:
+                if 0 < appid <= 0xffffffff and isinstance(mode, str) and mode in VALID_GAME_DISPLAYS:
                     display[str(appid)] = mode
         self._data["display_profiles"] = display
         self._data["reverse_led_order"] = bool(self._data["reverse_led_order"])
@@ -259,7 +358,13 @@ class SettingsStore:
             self._data["weather_temperature_unit"] = DEFAULTS["weather_temperature_unit"]
         self._data["weather_location"] = _valid_weather_location(self._data["weather_location"])
         if self._data["weather_location"] is None:
-            self._data["weather_display"] = "off"
+            if self._data["home_display"] == "weather":
+                self._data["home_display"] = "steam"
+            if self._data["game_display"] == "weather":
+                self._data["game_display"] = "steam"
+            for appid, display in list(self._data["display_profiles"].items()):
+                if display == "weather":
+                    self._data["display_profiles"].pop(appid)
             self._data["weather_topbar_enabled"] = False
         for key, lower, upper in (("weather_brightness", 10, 100), ("weather_shadow_cutoff", 0, 60)):
             try:
@@ -275,9 +380,27 @@ class SettingsStore:
                 self._data[key] = value if 0 <= value < count else DEFAULTS[key]
             except (TypeError, ValueError, OverflowError):
                 self._data[key] = DEFAULTS[key]
-        # Corrupt or hand-edited configurations keep the older controller default.
-        if self._data["weather_display"] != "off" and self._data["controller_battery_display"] != "off":
-            self._data["weather_display"] = "off"
+        # Compatibility fields remain exportable, but routing owns where each
+        # permanent provider is allowed to appear.
+        profile_displays = set(self._data["display_profiles"].values())
+        home_weather = self._data["home_display"] == "weather"
+        game_weather = self._data["game_display"] == "weather" or "weather" in profile_displays
+        self._data["weather_display"] = (
+            "everywhere" if home_weather and game_weather else "home" if home_weather
+            else "game" if game_weather else "off"
+        )
+        home_controller = self._data["home_display"] == "controller"
+        game_controller = self._data["game_display"] == "controller" or "controller" in profile_displays
+        self._data["controller_battery_display"] = (
+            "everywhere" if home_controller and game_controller else "home" if home_controller
+            else "game" if game_controller else "off"
+        )
+        self._data["performance_always"] = self._data["home_display"] == "performance"
+        self._data["mode"] = (
+            "disabled" if not self._data["signalbar_enabled"]
+            else self._data["game_display"] if self._data["game_display"] in {"artwork", "performance", "customization"}
+            else "events"
+        )
         charging_mode = self._data["controller_charging_mode"]
         if not isinstance(charging_mode, str) or charging_mode not in {
             "off", "brief", "continuous-home", "continuous-everywhere"
@@ -346,6 +469,43 @@ class SettingsStore:
                     manual_y = DEFAULTS["artwork_manual_y"]
                 profiles[appid] = {"mode": mode, "manual_y": manual_y, "source": source}
         self._data["artwork_profiles"] = profiles
+        raw_launch_profiles = self._data.get("launch_artwork_profiles")
+        launch_profiles = {}
+        if isinstance(raw_launch_profiles, dict):
+            for raw_appid, raw_profile in list(raw_launch_profiles.items())[:512]:
+                try:
+                    appid = str(int(raw_appid))
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                if int(appid) <= 0 or not isinstance(raw_profile, dict):
+                    continue
+                mode = raw_profile.get("palette_mode", "artwork")
+                if mode not in {"artwork", "custom"}:
+                    mode = "artwork"
+                defaults = {
+                    "2": [list(DEFAULTS["customization_colour_1"]), list(DEFAULTS["customization_colour_2"])],
+                    "3": [list(DEFAULTS["customization_colour_1"]), list(DEFAULTS["customization_colour_2"]), list(DEFAULTS["customization_colour_3"])],
+                }
+                palettes = {}
+                raw_palettes = raw_profile.get("custom_palettes", {})
+                for count in (2, 3):
+                    raw = raw_palettes.get(str(count)) if isinstance(raw_palettes, dict) else None
+                    if not isinstance(raw, (list, tuple)) or len(raw) != count:
+                        palettes[str(count)] = defaults[str(count)]
+                        continue
+                    clean = []
+                    for colour in raw:
+                        if not isinstance(colour, (list, tuple)) or len(colour) != 3:
+                            clean = []
+                            break
+                        try:
+                            clean.append([max(0, min(255, int(round(float(channel))))) for channel in colour])
+                        except (TypeError, ValueError, OverflowError):
+                            clean = []
+                            break
+                    palettes[str(count)] = clean if len(clean) == count else defaults[str(count)]
+                launch_profiles[appid] = {"palette_mode": mode, "custom_palettes": palettes}
+        self._data["launch_artwork_profiles"] = launch_profiles
 
     def all(self):
         with self._lock:
@@ -353,32 +513,90 @@ class SettingsStore:
 
     def update(self, changes: dict):
         with self._lock:
-            if ((changes.get("weather_display") not in (None, "off") or changes.get("weather_topbar_enabled") is True)
+            wants_weather = (
+                changes.get("weather_display") not in (None, "off")
+                or changes.get("home_display") == "weather"
+                or changes.get("game_display") == "weather"
+                or changes.get("weather_topbar_enabled") is True
+            )
+            if (wants_weather
                     and _valid_weather_location(changes.get("weather_location", self._data["weather_location"])) is None):
                 raise ValueError("Choose a weather city before enabling weather")
+            if "mode" in changes:
+                legacy_mode = changes["mode"]
+                if legacy_mode == "disabled":
+                    changes = {**changes, "signalbar_enabled": False}
+                elif legacy_mode in {"artwork", "performance", "customization"}:
+                    changes = {**changes, "signalbar_enabled": True, "game_display": legacy_mode}
+                elif legacy_mode == "events":
+                    changes = {**changes, "signalbar_enabled": True, "game_display": "steam"}
+            if "weather_display" in changes:
+                display = changes["weather_display"]
+                changes = dict(changes)
+                changes["home_display"] = "weather" if display in {"home", "everywhere"} else (
+                    "steam" if changes.get("home_display", self._data["home_display"]) == "weather"
+                    else changes.get("home_display", self._data["home_display"])
+                )
+                changes["game_display"] = "weather" if display in {"game", "everywhere"} else (
+                    "steam" if changes.get("game_display", self._data["game_display"]) == "weather"
+                    else changes.get("game_display", self._data["game_display"])
+                )
+            if "controller_battery_display" in changes:
+                display = changes["controller_battery_display"]
+                changes = dict(changes)
+                changes["home_display"] = "controller" if display in {"home", "everywhere"} else (
+                    "steam" if changes.get("home_display", self._data["home_display"]) == "controller"
+                    else changes.get("home_display", self._data["home_display"])
+                )
+                changes["game_display"] = "controller" if display in {"game", "everywhere"} else (
+                    "steam" if changes.get("game_display", self._data["game_display"]) == "controller"
+                    else changes.get("game_display", self._data["game_display"])
+                )
             for key, value in changes.items():
                 if key in DEFAULTS:
                     self._data[key] = value
-            if changes.get("weather_display") in {"home", "game", "everywhere"}:
-                self._data["controller_battery_display"] = "off"
-            elif changes.get("controller_battery_display") in {"home", "game", "everywhere"}:
-                self._data["weather_display"] = "off"
             self._validate()
             self.save()
             return dict(self._data)
 
     def replace_configuration(self, global_values: dict, display_profiles: dict,
-                              artwork_profiles: dict):
+                              artwork_profiles: dict, launch_artwork_profiles=None):
         """Atomically replace saved choices; malformed imports leave them intact."""
+        launch_artwork_profiles = {} if launch_artwork_profiles is None else launch_artwork_profiles
         if not isinstance(global_values, dict) or not isinstance(display_profiles, dict) \
-                or not isinstance(artwork_profiles, dict):
+                or not isinstance(artwork_profiles, dict) or not isinstance(launch_artwork_profiles, dict):
             raise ValueError("Configuration sections must be objects")
-        unsupported = set(global_values) - set(DEFAULTS) - {"display_profiles", "artwork_profiles"}
-        if unsupported or "display_profiles" in global_values or "artwork_profiles" in global_values:
+        unsupported = set(global_values) - set(DEFAULTS) - {"display_profiles", "artwork_profiles", "launch_artwork_profiles"}
+        if unsupported or any(key in global_values for key in ("display_profiles", "artwork_profiles", "launch_artwork_profiles")):
             raise ValueError("Configuration contains unsupported settings")
+        if "mode" in global_values and global_values["mode"] not in VALID_MODES | {"automatic"}:
+            raise ValueError("Invalid configuration setting: mode")
         imported = deepcopy(global_values)
+        if "signalbar_enabled" not in imported:
+            imported["signalbar_enabled"] = imported.get("mode") != "disabled"
+        if "home_display" not in imported:
+            weather = imported.get("weather_display", "off")
+            controller = imported.get("controller_battery_display", "off")
+            imported["home_display"] = (
+                "weather" if weather in {"home", "everywhere"}
+                else "controller" if controller in {"home", "everywhere"}
+                else "performance" if imported.get("mode") == "performance"
+                and imported.get("performance_always", True) else "steam"
+            )
+        if "game_display" not in imported:
+            weather = imported.get("weather_display", "off")
+            controller = imported.get("controller_battery_display", "off")
+            imported["game_display"] = (
+                "weather" if weather in {"game", "everywhere"}
+                else "controller" if controller in {"game", "everywhere"}
+                else ("performance" if imported.get("performance_enabled", True) else "artwork")
+                if imported.get("mode") == "automatic"
+                else imported.get("mode") if imported.get("mode") in {"artwork", "performance"}
+                else "steam"
+            )
         imported["display_profiles"] = deepcopy(display_profiles)
         imported["artwork_profiles"] = deepcopy(artwork_profiles)
+        imported["launch_artwork_profiles"] = deepcopy(launch_artwork_profiles)
         with self._lock:
             previous = self._data
             try:
@@ -388,8 +606,11 @@ class SettingsStore:
                 # Reject invalid values rather than silently changing a user
                 # selected import. Derived compatibility fields are expected
                 # to be normalized from controller_charging_mode.
-                derived = {"controller_charging_enabled", "controller_charging_display",
-                           "weather_sequence_revision"}
+                derived = {
+                    "mode", "performance_always", "weather_display", "controller_battery_display",
+                    "controller_charging_enabled", "controller_charging_display",
+                    "weather_sequence_revision",
+                }
                 for key, value in imported.items():
                     if key not in derived and self._data[key] != value:
                         raise ValueError(f"Invalid configuration setting: {key}")
@@ -415,16 +636,23 @@ class SettingsStore:
 
     def display_for(self, appid=0):
         with self._lock:
-            override = self._data["display_profiles"].get(str(int(appid or 0)), "inherit")
-            default = self._data["mode"]
-            return {"default": default, "override": override,
-                    "mode": default if default in {"disabled", "events"} or override == "inherit" else override}
+            appid = int(appid or 0)
+            override = self._data["display_profiles"].get(str(appid), "inherit") if appid > 0 else "inherit"
+            default = self._data["game_display"] if appid > 0 else self._data["home_display"]
+            selected = default if override == "inherit" else override
+            mode = (
+                "disabled" if not self._data["signalbar_enabled"]
+                else selected if selected in {"artwork", "performance", "customization"} else "events"
+            )
+            return {"default": default, "override": override, "selected": selected, "mode": mode}
 
     def update_display(self, appid, mode):
         appid = int(appid)
-        if not 0 < appid <= 0xffffffff or not isinstance(mode, str) or mode not in {"inherit", "artwork", "performance"}:
-            raise ValueError("A game AppID and Artwork, Performance or Inherit are required")
+        if not 0 < appid <= 0xffffffff or not isinstance(mode, str) or mode not in {"inherit", *VALID_GAME_DISPLAYS}:
+            raise ValueError("A game AppID and a supported display or Inherit are required")
         with self._lock:
+            if mode == "weather" and self._data["weather_location"] is None:
+                raise ValueError("Choose a weather city before selecting Weather")
             profiles = dict(self._data["display_profiles"])
             if mode == "inherit":
                 profiles.pop(str(appid), None)
@@ -464,6 +692,39 @@ class SettingsStore:
             self._validate()
             self.save()
             return self.artwork_for(appid)
+
+    def launch_artwork_for(self, appid=0):
+        """Return the launch palette choice while retaining both custom sizes."""
+        defaults = {
+            "2": [list(DEFAULTS["customization_colour_1"]), list(DEFAULTS["customization_colour_2"])],
+            "3": [list(DEFAULTS["customization_colour_1"]), list(DEFAULTS["customization_colour_2"]), list(DEFAULTS["customization_colour_3"])],
+        }
+        with self._lock:
+            appid = int(appid or 0)
+            profile = self._data["launch_artwork_profiles"].get(str(appid), {}) if appid > 0 else {}
+            return {
+                "palette_mode": profile.get("palette_mode", "artwork"),
+                "custom_palettes": deepcopy(profile.get("custom_palettes", defaults)),
+                "custom": bool(profile),
+            }
+
+    def update_launch_artwork(self, appid, changes):
+        appid = int(appid or 0)
+        if appid <= 0:
+            raise ValueError("A running game AppID is required for a custom launch palette")
+        with self._lock:
+            profiles = deepcopy(self._data["launch_artwork_profiles"])
+            profile = self.launch_artwork_for(appid)
+            profile.pop("custom", None)
+            if "palette_mode" in changes:
+                profile["palette_mode"] = changes["palette_mode"]
+            if "custom_palettes" in changes:
+                profile["custom_palettes"] = deepcopy(changes["custom_palettes"])
+            profiles[str(appid)] = profile
+            self._data["launch_artwork_profiles"] = profiles
+            self._validate()
+            self.save()
+            return self.launch_artwork_for(appid)
 
     def save(self):
         directory = os.path.dirname(self.path)

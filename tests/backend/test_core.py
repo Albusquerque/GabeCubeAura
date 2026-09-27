@@ -60,12 +60,14 @@ class CoreTests(unittest.TestCase):
             "stripmine_priority_weather": "stripmine",
             "stripmine_priority_controller": "signalbar",
             "stripmine_priority_light_events": "signalbar",
+            "stripmine_priority_game_launches": "stripmine",
         }
         self.assertEqual(Engine._stripmine_priority("artwork:hero", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("performance", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("weather:cloud", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("controller:persistent", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("event:achievement", values), "signalbar")
+        self.assertEqual(Engine._stripmine_priority("launch-artwork:ripple", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("countdown", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("none", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("valve", values), "stripmine")
@@ -377,11 +379,14 @@ class PersistenceTests(unittest.TestCase):
             path = str(Path(directory) / "config.json")
             store = SettingsStore(path)
             expected = {
-                "mode": "performance", "performance_metric": "mixed",
-                "performance_smoothing": "responsive", "performance_always": True,
+                "mode": "performance", "signalbar_enabled": True,
+                "home_display": "controller", "game_display": "performance",
+                "performance_metric": "mixed",
+                "performance_smoothing": "responsive", "performance_always": False,
                 "mixed_direction": "mirrored", "temperature_palette": "classic",
                 "cool_temp_c": 45.0, "hot_temp_c": 78.0,
                 "artwork_source": "hero", "artwork_mode": "auto", "artwork_manual_y": .34,
+                "launch_artwork_source": "hero",
                 "parental_countdown_enabled": True, "countdown_colour": "white",
                 "countdown_full_bar_minutes": 0, "free_timer_minutes": 60,
                 "events_enabled": True, "event_notifications_enabled": True,
@@ -480,7 +485,11 @@ class PersistenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "art.json")
             provider = ArtworkProvider(path)
-            provider.submit(42, "fingerprint", "auto", 0.72, RED, 0.65, "library_hero.jpg")
+            provider.submit(42, "fingerprint", "auto", 0.72, RED, 0.65,
+                            "library_hero.jpg", "hero", {
+                                "2": [[229, 54, 70], [0, 70, 255]],
+                                "3": [[229, 54, 70], [0, 70, 255], [250, 190, 40]],
+                            })
             reloaded = ArtworkProvider(path)
             self.assertTrue(reloaded.activate_cached(42, "fingerprint", "auto", 0.72))
             self.assertEqual(reloaded.output(42).frame, RED)
@@ -495,7 +504,7 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(loaded["mode"], "artwork")
             self.assertEqual(loaded["artwork_manual_y"], 0.90)
             self.assertEqual(loaded["performance_smoothing"], "responsive")
-            self.assertTrue(loaded["performance_always"])
+            self.assertFalse(loaded["performance_always"])
             self.assertEqual(json.loads(Path(path).read_text())["mode"], "artwork")
 
             store.update({"performance_smoothing": "invalid"})

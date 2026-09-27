@@ -1,16 +1,40 @@
-# SignalBar
+# GabeCubeAura
 
 **Smart status lighting for the official Steam Machine**
 
 Make your Steam Machine's 17-pixel light bar useful and a little more
-expressive. Choose a persistent display, then let playtime warnings and short
-Steam moments take the stage before your display returns.
+expressive. Choose separate permanent displays for Home and games, then let
+temporary launch, playtime, and Steam moments take the stage before the
+selected display returns.
 
-[Download SignalBar v0.7.1](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.1)
+[Download GabeCubeAura v1.0.0](https://github.com/Albusquerque/GabeCubeAura/releases/tag/v1.0.0)
 
-[Try the interactive SignalBar preview before installing](https://albusquerque.github.io/signalbar-concept/)
+GabeCubeAura is the new name of SignalBar. On first launch it imports an existing
+CubeGlow test configuration when present, otherwise it imports the latest
+SignalBar settings and artwork caches. Existing users keep their configuration.
+
+[Try the interactive GabeCubeAura preview before installing](https://albusquerque.github.io/gabecubeaura-concept/)
 
 ## Your everyday display
+
+### Customization+
+
+Build a permanent Home or in-game display from one, two, or three exact
+opaque colours. Use the colour picker, Hex or RGB values, raw 34–255
+brightness, 1–100 speed for animated patterns, direction, and a live 17-LED
+preview. The 61 existing effect names are grouped by dynamism: Calm & ambient,
+Flowing, and Energetic. Alpha is intentionally absent because the LED hardware
+and GabeCubeAura settings use RGB, not transparency.
+
+Steam's native Patrol, Breathe, Rainbow, and Solid presets remain in Steam.
+Select **GabeCubeAura Off** to use them; GabeCubeAura does not present approximate
+lookalikes as if they were Valve's effects.
+
+The animation below moves through two- and three-colour examples at different
+speeds. It is captured from the browser simulator, so diffuser appearance may
+differ slightly from the physical Steam Machine.
+
+![Customization+ cycling through Color wipe, Supernova, and Ripple with exact two- and three-colour palettes](assets/readme-gifs/customization-plus.gif)
 
 ### Artwork
 
@@ -24,15 +48,33 @@ shows the active game image directly above its exact 17-colour sample.
 
 ![Artwork mode with Deep Rock Galactic artwork](assets/signalbar-artwork-mode-v1.png)
 
+### Game launch animations
+
+GabeCubeAura can play a one-shot launch sequence when a new
+Steam AppID starts. **Game launches is independent from Artwork display**: it
+has its own Hero/Header/Capsule source and colour cache, extracts either two or
+three dominant colours locally, offers ten patterns, and uses a 3–45 second
+visible timer. Short alerts pause that timer and the sequence resumes after the
+alert.
+
+The first animation shows three separate AppIDs and the two- or three-colour
+palette extracted from each Library Hero. The second shows five of the ten
+available launch patterns. These are browser illustrations generated from the
+Concept Lab, not proof of physical LED colour fidelity.
+
+![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](assets/readme-gifs/game-launch-palettes.gif)
+
+![Balatro launch animation cycling through Crossed arpeggio, Legato, Scanner, Theater chase, and Ripple](assets/readme-gifs/game-launch-patterns.gif)
+
 ### Performance
 
 Use the bar for CPU, GPU, or both. Mixed mode gives each signal eight LEDs,
 with the centre LED off. Length shows load and colour shows temperature.
 Responsive, Balanced, and Smooth profiles control how quickly the meter reacts.
 
-Performance can be limited to game sessions or kept active on the Steam home
-screen. Three ready-made temperature palettes are included, and a native Decky
-colour picker lets you choose custom Cool, Middle, and Hot colours.
+Performance can be selected independently for Home, games, or a specific game.
+Three ready-made temperature palettes are included, and a native Decky colour
+picker lets you choose custom Cool, Middle, and Hot colours.
 
 CPU/GPU sensors are sampled every 0.5 seconds in every display mode. Opening
 Performance settings immediately shows fresh readings without first selecting
@@ -41,22 +83,21 @@ as if they were live.
 
 ![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](assets/readme-gifs/performance.gif)
 
-### Signals only
+### Display routing and temporary layers
 
-Use SignalBar for short Steam notifications, achievements, screenshots, and
-recording start/stop animations without keeping Artwork, Performance, or
-Weather on the bar. Playtime countdowns, controller alerts, and any enabled
-battery or charging status remain active. When none of those signals needs the
-bar, Steam or another light-bar application retains control.
-This directly answers the request in
-[issue #1](https://github.com/Albusquerque/SignalBar/issues/1).
+Choose one permanent display for Home and another for games: GabeCubeAura Off,
+Customization+, Artwork (games only), Performance, Weather, or Controllers. A per-game override
+can replace the in-game default. Game launches, Playtime, Light events, and
+Controller alerts are separate temporary layers, so they work without forcing
+a particular permanent display. Choosing GabeCubeAura Off reproduces the former
+Signals-only behaviour: GabeCubeAura yields the bar between temporary signals.
 
 With StripMine v0.1.1-alpha.7 or newer, open **Settings → Compatibility** to
 choose which plugin owns the bar for Artwork, Performance, Weather, Controller
-displays and Light Events while the mine is active. SignalBar and StripMine
+displays, Game launches, and Light Events while the mine is active. GabeCubeAura and StripMine
 acknowledge every transfer before writing, then restore the previous owner
 automatically. No manual **Retry bar** action is required. Playtime countdowns
-remain SignalBar priorities; unknown applications still trigger the normal
+remain GabeCubeAura priorities; unknown applications still trigger the normal
 ownership guard.
 
 ### Playtime Countdown
@@ -70,14 +111,14 @@ During the final eight seconds, three short white flashes repeat until zero.
 
 ### Controller battery
 
-See controller charge at a glance. On Home or in games, an optional gauge shows
-one controller or splits the bar into two mirrored gauges with a dark centre
+See controller charge at a glance. Select Controllers as the permanent Home or
+In-game display to show one controller, or split the bar into two mirrored gauges with a dark centre
 and white charge tips. Connection and low-battery alerts appear briefly when
 Steam reports a change.
 
 Charging can play a short cue or a continuous blue-and-white animation that
-stops at 100%. Choose the animation styles, colours, brightness and where each
-signal appears. The GIF shows the two-controller gauge and continuous charging.
+stops at 100%. Choose the animation styles, colours, brightness and alert
+contexts. The GIF shows the two-controller gauge and continuous charging.
 
 ![Two mirrored controller gauges followed by continuous charging](assets/readme-gifs/controller-battery.gif)
 
@@ -86,8 +127,8 @@ invented; see the [controller test notes](docs/CONTROLLERS_RESEARCH.md).
 
 ### Weather
 
-Choose a city to give the light bar a living weather scene on Home, in games,
-or everywhere. Eighteen selectable loops cover clear skies, rain, cloud,
+Choose a city, then select Weather as the permanent Home or In-game display.
+Eighteen selectable loops cover clear skies, rain, cloud,
 partly cloudy day and night, snow, and storms. **Snow takes hold** is the
 default snow scene; all animations can be previewed without network access.
 Cloud has four choices, including **Cross & gather** and the longer **Slow
@@ -105,15 +146,15 @@ are mapped to LEDs.
 <img src="assets/weather-topbar-photo-large.png" alt="Weather icon and temperature beside the SteamOS clock on a real Steam Machine" width="700">
 
 Select a city before enabling live weather. If you enter a country, use its
-full name (for example France), not a two-letter code. SignalBar fetches current
+full name (for example France), not a two-letter code. GabeCubeAura fetches current
 conditions from Open-Meteo about every 15 minutes, without an API key or
-automatic location detection. Weather and the permanent controller gauge are
-mutually exclusive; the controller gauge remains the fresh-install default.
+automatic location detection. Only one permanent display is selected in each
+context; Controllers remains the fresh-install Home default.
 
 ## Light events
 
 Light events briefly replace the current display, play their animation, then
-restore the live Artwork or Performance state. They can work outside a game.
+restore the selected permanent display. They can work outside a game.
 Each category has its own switch, animation selector, and nearby live preview.
 
 ### Notification
@@ -138,7 +179,7 @@ Constellation round trip is the fresh-install choice. The GIF below shows it.
 ### Recording
 
 Two red traces mark recording start and stop. While recording, the centre LED
-stays pure red over Artwork or Performance. Its two neighbours are black by
+stays pure red over a compatible permanent display. Its two neighbours are black by
 default to keep the marker distinct through the physical diffuser. The marker
 never modifies a playtime countdown or another event animation.
 
@@ -146,48 +187,48 @@ never modifies a playtime countdown or another event animation.
 
 ## How priorities work
 
-SignalBar follows a strict order:
+GabeCubeAura follows a strict order:
 
 1. Disabled returns complete control to Steam.
-2. A new native LED write interrupts SignalBar and is never overwritten by a
-   stale frame.
-3. The final five minutes of a countdown are protected from light events.
-4. Short light events and manual previews temporarily replace non-critical
-   displays.
-5. Low-battery alerts can interrupt other short events; connection and charging
-   alerts do not interrupt an active Steam light event.
-6. Steam Families and personal countdowns replace the selected base display.
-7. The optional controller gauge or Weather replaces the base display in its
-   selected context; otherwise Artwork or Performance provides it.
+2. Short light/controller alerts may temporarily use a stable bar snapshot; a
+   new native LED write cancels them and is never overwritten by a stale frame.
+3. Valve/system ownership prevents persistent GabeCubeAura output.
+4. The final five minutes of a countdown cancel and outrank Game launches.
+5. Short alerts pause a Game launch's visible timer; the launch resumes after
+   the alert.
+6. Game launches temporarily replace regular countdowns; those countdowns
+   return afterwards.
+7. The selected permanent Home or In-game display returns after temporary
+   layers finish.
 
 ## Install
 
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Download `SignalBar-v0.7.1.zip` from the
-   [v0.7.1 release](https://github.com/Albusquerque/SignalBar/releases/tag/v0.7.1).
+2. Download `GabeCubeAura-v1.0.0.zip` from the
+   [GabeCubeAura v1.0.0 release](https://github.com/Albusquerque/GabeCubeAura/releases/tag/v1.0.0).
    Do not extract it.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
 4. Open **Decky > Settings > Developer > Install Plugin from ZIP** and select
    the downloaded archive.
-5. Restart Decky Loader if SignalBar does not appear immediately.
+5. Restart Decky Loader if the installed plugin does not appear immediately.
 
 ### Manual installation
 
 Extract the archive into `~/homebrew/plugins/` so the result is a
-`~/homebrew/plugins/SignalBar/` directory, then restart `plugin_loader`.
+`~/homebrew/plugins/GabeCubeAura/` directory, then restart `plugin_loader`.
 
-SignalBar requests Decky's root flag only because the Steam Machine exposes its
+GabeCubeAura requests Decky's root flag only because the Steam Machine exposes its
 light bar through root-owned `valve-leds` sysfs files.
 
 ## First setup
 
-1. Open SignalBar in Decky's quick-access menu.
-2. Choose **Artwork**, **Performance**, **Signals only**, or **Disabled**.
-3. Open **Detailed settings** for Artwork, Performance, Playtime, Light events,
-   Controllers, Weather, and Advanced options.
+1. Open GabeCubeAura in Decky's quick-access menu.
+2. Choose a **Home display** and an **In-game display** under Display routing.
+3. Open **Detailed settings** for Artwork, Performance, Weather, Game launches,
+   Playtime, Light events, Controllers, Compatibility, and Advanced options.
 4. Use Preview to compare animations before changing your live settings.
 
 Live Light events are enabled on a fresh installation. Controller alerts have
@@ -212,7 +253,7 @@ layer rather than a complete image.
 - CPU, GPU, or mixed CPU + GPU
 - Both meters left to right, or mirrored toward the centre
 - Responsive, Balanced, or Smooth filtering
-- Optional always-on display outside games
+- Selectable as the Home, In-game, or per-game display
 - Three built-in temperature palettes
 - Custom Cool, Middle, and Hot colours through Decky's colour picker
 - Live CPU/GPU load and temperature in the quick panel
@@ -233,7 +274,7 @@ clears the old parental countdown immediately.
 
 ### Controllers
 
-- Permanent battery gauge: Off, On Home, or Everywhere
+- Permanent battery gauge selected through Home/In-game display routing
 - Brief alert contexts: Off, On Home, In game, or Home + in game
 - Connection and low-battery alerts can each be disabled; charging has its own
   Off / Brief / Continuous on Home / Continuous everywhere choice
@@ -241,14 +282,14 @@ clears the old parental countdown immediately.
 - Three selectable styles for each signal, including the two-controller view
 - Local preview buttons work without a connected controller or live alerts
 
-The gauge takes the place of Artwork or Performance where selected; it does
-not combine their colours. A Steam Families countdown still wins. Unknown or
+The gauge is the permanent display where selected; it does not combine colours
+from another display. A Steam Families countdown still wins. Unknown or
 coarse battery data is not displayed as an exact percentage.
 
 ### Weather
 
 - Location selected manually by city or postal code; no automatic geolocation
-- On Home, In game, or Everywhere, with eighteen selectable 17-LED animations
+- Selectable through Home/In-game routing, with eighteen 17-LED animations
 - Independent optional SteamOS top-bar icon and °C/°F temperature
 - Weather brightness and faint-pixel cutoff for the physical diffuser
 - Weather previews work without a city or network connection
@@ -266,9 +307,9 @@ the Decky preview remains left to right.
 ### Configuration backup and reset
 
 Open **Advanced / debug > Show debug details** and choose **Export configuration
-JSON**. SignalBar writes a readable snapshot of global settings, saved per-game
+JSON**. GabeCubeAura writes a readable snapshot of global settings, saved per-game
 profiles, and the current game's resolved choices to
-`/home/deck/Documents/SignalBar-configuration.json` on a standard SteamOS setup.
+`/home/deck/Documents/GabeCubeAura-configuration.json` on a standard SteamOS setup.
 The panel always shows the exact path used. Exporting again replaces only that
 file, and controller device IDs are never included.
 
@@ -289,7 +330,7 @@ exported JSON or the artwork cache; both stop a running personal timer.
 - Redundant-frame suppression to reduce unnecessary LED writes
 - A userspace guard that yields when Steam or another process changes the bar
 
-SignalBar only restores a previous frame when the hardware still matches its
+GabeCubeAura only restores a previous frame when the hardware still matches its
 own last verified write.
 
 ## Requirements and known limits
@@ -316,7 +357,10 @@ npm run build
 npm run package
 ```
 
-The installable archive is written to `out/SignalBar-v0.7.1.zip`.
+The installable archive is written to `out/GabeCubeAura-v1.0.0.zip`.
+
+See [the GabeCubeAura 1.0.0 release design](docs/GABECUBEAURA_1.0.0.md)
+for the rebrand, Customization+ hierarchy and per-game launch palettes.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
 hardware-rendering details. Release history is available in
@@ -324,7 +368,7 @@ hardware-rendering details. Release history is available in
 
 ## Uninstall and license
 
-Use Decky's plugin settings to uninstall SignalBar. Settings remain in Decky's
+Use Decky's plugin settings to uninstall GabeCubeAura. Settings remain in Decky's
 normal plugin settings directory and can be removed separately if desired.
 
-SignalBar is released under the [BSD 3-Clause License](LICENSE).
+GabeCubeAura is released under the [BSD 3-Clause License](LICENSE).

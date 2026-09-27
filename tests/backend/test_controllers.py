@@ -350,7 +350,7 @@ class ControllerTests(unittest.TestCase):
             "controller-battery")
         self.assertEqual(Arbiter().choose(
             **{**kwargs, "controller_event": provider.event_output(), "controller_base": empty}).provider,
-            "none")
+            "weather")
 
     def test_signals_only_accepts_controller_alerts_and_disabled_cancels_them(self):
         with tempfile.TemporaryDirectory() as folder:

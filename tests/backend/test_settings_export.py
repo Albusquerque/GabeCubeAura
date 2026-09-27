@@ -18,12 +18,62 @@ from signalbar.settings.export import (
 
 
 class SettingsExportTests(unittest.TestCase):
+    def test_rebrand_prefers_cubeglow_and_migrates_settings_and_caches_once(self):
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            signalbar = base / "SignalBar"
+            legacy = base / "CubeGlow"
+            current = base / "GabeCubeAura"
+            signalbar.mkdir()
+            legacy.mkdir()
+            (signalbar / "config.json").write_bytes(b'{"mode":"artwork"}')
+            expected = {
+                "config.json": b'{"mode":"weather"}',
+                "artwork-cache.json": b'{"artwork":true}',
+                "launch-artwork-cache.json": b'{"launch":true}',
+            }
+            for filename, contents in expected.items():
+                (legacy / filename).write_bytes(contents)
+            (legacy / "unrelated.txt").write_text("do not copy", encoding="utf-8")
+
+            decky = types.ModuleType("decky")
+            with patch.dict(sys.modules, {"decky": decky}):
+                spec = importlib.util.spec_from_file_location("gabecubeaura_migration_test", root / "main.py")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "CubeGlow")
+                self.assertEqual(
+                    {path.name: path.read_bytes() for path in current.iterdir()},
+                    expected,
+                )
+
+                (legacy / "config.json").write_bytes(b'{"mode":"performance"}')
+                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "")
+                self.assertEqual((current / "config.json").read_bytes(), expected["config.json"])
+
+    def test_rebrand_falls_back_to_signalbar_when_cubeglow_is_absent(self):
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            legacy = base / "SignalBar"
+            current = base / "GabeCubeAura"
+            legacy.mkdir()
+            (legacy / "config.json").write_bytes(b'{"mode":"weather"}')
+            decky = types.ModuleType("decky")
+            with patch.dict(sys.modules, {"decky": decky}):
+                spec = importlib.util.spec_from_file_location("gabecubeaura_signalbar_migration_test", root / "main.py")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(module.Plugin._migrate_legacy_settings(str(current)), "SignalBar")
+                self.assertEqual((current / "config.json").read_bytes(), b'{"mode":"weather"}')
+
     def test_decky_import_and_reset_routes_reach_engine(self):
         root = Path(__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
             settings = SettingsStore(str(Path(directory) / "config.json"))
             settings.update({"performance_smoothing": "smooth"})
-            export_path = Path(directory) / "SignalBar-configuration.json"
+            export_path = Path(directory) / "GabeCubeAura-configuration.json"
             write_configuration_export(settings, export_path, "0.6.0")
             decky = types.ModuleType("decky")
             with patch.dict(sys.modules, {"decky": decky}):
@@ -57,35 +107,37 @@ class SettingsExportTests(unittest.TestCase):
             self.assertEqual(payload["schema_version"], 1)
             self.assertEqual(payload["configuration"]["global"]["mode"], "performance")
             self.assertNotIn("display_profiles", payload["configuration"]["global"])
+            self.assertNotIn("launch_artwork_profiles", payload["configuration"]["global"])
             self.assertEqual(payload["configuration"]["profiles"]["display_by_appid"], {"42": "artwork"})
+            self.assertEqual(payload["configuration"]["profiles"]["launch_artwork_by_appid"], {})
             self.assertEqual(payload["configuration"]["current_game"]["display"]["mode"], "artwork")
             self.assertEqual(payload["configuration"]["current_game"]["artwork"]["manual_y"], 0.83)
             self.assertNotIn("controllers", payload["configuration"])
 
     def test_write_is_readable_and_reports_exact_path(self):
         with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory) / "Documents" / "SignalBar-configuration.json"
+            target = Path(directory) / "Documents" / "GabeCubeAura-configuration.json"
             result = write_configuration_export(
                 SettingsStore(str(Path(directory) / "config.json")),
                 target,
                 "0.5.1",
             )
             self.assertEqual(result["path"], str(target))
-            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["signalbar_version"], "0.5.1")
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["gabecubeaura_version"], "0.5.1")
             self.assertEqual(target.stat().st_mode & 0o777, 0o644)
 
     def test_path_prefers_documents_and_falls_back_to_settings(self):
         self.assertEqual(
             configuration_export_path("/tmp/settings", "/home/deck"),
-            Path("/home/deck/Documents/SignalBar-configuration.json"),
+            Path("/home/deck/Documents/GabeCubeAura-configuration.json"),
         )
         self.assertEqual(
             configuration_export_path("/home/deck/homebrew/settings/SignalBar"),
-            Path("/home/deck/Documents/SignalBar-configuration.json"),
+            Path("/home/deck/Documents/GabeCubeAura-configuration.json"),
         )
         self.assertEqual(
             configuration_export_path("/tmp/settings"),
-            Path("/tmp/settings/SignalBar-configuration.json"),
+            Path("/tmp/settings/GabeCubeAura-configuration.json"),
         )
 
     def test_round_trip_import_reset_and_invalid_import_are_atomic(self):
@@ -95,19 +147,25 @@ class SettingsExportTests(unittest.TestCase):
             source.update({"performance_smoothing": "smooth", "weather_temperature_unit": "fahrenheit"})
             source.update_display(42, "artwork")
             source.update_artwork(42, {"mode": "manual", "manual_y": .83, "source": "header"})
-            export = folder / "SignalBar-configuration.json"
+            source.update_launch_artwork(42, {
+                "palette_mode": "custom",
+                "custom_palettes": {"2": [[255, 0, 0], [0, 0, 255]],
+                                    "3": [[255, 0, 0], [0, 255, 0], [0, 0, 255]]},
+            })
+            export = folder / "GabeCubeAura-configuration.json"
             write_configuration_export(source, export, "0.6.0")
-            global_values, display, artwork = read_configuration_import(str(export))
+            global_values, display, artwork, launch_artwork = read_configuration_import(str(export))
             target = SettingsStore(str(folder / "target.json"))
-            imported = target.replace_configuration(global_values, display, artwork)
+            imported = target.replace_configuration(global_values, display, artwork, launch_artwork)
             self.assertEqual(imported["performance_smoothing"], "smooth")
             self.assertEqual(imported["weather_temperature_unit"], "fahrenheit")
             self.assertEqual(target.display_for(42)["mode"], "artwork")
             self.assertEqual(target.artwork_for(42)["manual_y"], .83)
+            self.assertEqual(target.launch_artwork_for(42)["palette_mode"], "custom")
             before = (folder / "target.json").read_bytes()
 
             with self.assertRaisesRegex(ValueError, "Invalid configuration setting"):
-                target.replace_configuration({**global_values, "mode": "not-a-mode"}, display, artwork)
+                target.replace_configuration({**global_values, "mode": "not-a-mode"}, display, artwork, launch_artwork)
             self.assertEqual((folder / "target.json").read_bytes(), before)
             self.assertEqual(target.all()["performance_smoothing"], "smooth")
 
@@ -121,7 +179,7 @@ class SettingsExportTests(unittest.TestCase):
 
     def test_import_reader_rejects_bad_schema_and_oversized_file(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "SignalBar-configuration.json"
+            path = Path(directory) / "GabeCubeAura-configuration.json"
             for payload in ({"schema_version": 2}, {"schema_version": 1, "configuration": {}},
                             {"schema_version": 1, "configuration": {"global": {}, "profiles": []}}):
                 path.write_text(json.dumps(payload), encoding="utf-8")

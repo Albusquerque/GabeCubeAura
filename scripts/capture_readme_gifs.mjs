@@ -1,4 +1,4 @@
-/** Capture the original SignalBar mockup DOM, cropped to its machine and LED preview. */
+/** Capture the legacy visual template, cropped to its machine and LED preview. */
 import { chromium } from "playwright";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
@@ -15,7 +15,7 @@ const INTERVAL_MS = 125;
 const CAPTURE_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'";
 const targetDir = path.resolve(outputPath);
 await fs.mkdir(targetDir, { recursive: true });
-const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "signalbar-readme-capture-"));
+const scratch = await fs.mkdtemp(path.join(os.tmpdir(), "gabecubeaura-readme-capture-"));
 const browser = await chromium.launch({ headless: true });
 
 async function loadMockup(source, viewportWidth, staticBase = false) {

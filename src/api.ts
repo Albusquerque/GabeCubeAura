@@ -10,16 +10,21 @@ export const setMode = callable<[mode: string], Status>("set_mode");
 export const setGameDisplay = callable<[appid: number, mode: string], Status>("set_game_display");
 export const setSetting = callable<[key: string, value: unknown], Status>("set_setting");
 export const setArtworkSetting = callable<[appid: number, key: string, value: unknown], Status>("set_artwork_setting");
-export const gameChanged = callable<[appid: number, title: string], Status>("game_changed");
-export const getArtwork = callable<[appid: number, source: string], ArtworkPayload>("get_artwork");
+export const setLaunchArtworkSetting = callable<[appid: number, key: string, value: unknown], Status>("set_launch_artwork_setting");
+export const gameChanged = callable<[appid: number, title: string, launch: boolean], Status>("game_changed");
+export const getArtwork = callable<[appid: number, source: string, purpose: "artwork" | "launch"], ArtworkPayload>("get_artwork");
 export const submitArtwork = callable<[
   appid: number,
   fingerprint: string,
   colors: number[][],
   sampleY: number,
+  dominantPalettes: { "2": number[][]; "3": number[][] },
   filename: string,
   source: string,
+  purpose: "artwork" | "launch",
 ], Status>("submit_artwork");
+export const previewLaunchArtwork = callable<[], boolean>("preview_launch_artwork");
+export const previewCustomization = callable<[], boolean>("preview_customization");
 export const setSteamActivity = callable<[active: boolean, reason: string], boolean>("set_steam_activity");
 export const reportRuntimeDiagnostic = callable<[
   event: string,

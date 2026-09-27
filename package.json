@@ -1,15 +1,16 @@
 {
-  "name": "signalbar",
-  "version": "0.7.1",
+  "name": "gabecubeaura",
+  "version": "1.0.0",
   "description": "Smart status lighting for Steam Machine",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "rollup -c -w",
     "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "PYTHONPYCACHEPREFIX=/tmp/signalbar-pycache PYTHONPATH=py_modules python3 -m unittest discover -s tests/backend -v",
+    "test:backend": "PYTHONPYCACHEPREFIX=/tmp/gabecubeaura-pycache PYTHONPATH=py_modules python3 -m unittest discover -s tests/backend -v",
     "test:frontend": "tsx --test tests/frontend/*.test.ts",
-    "package": "python3 scripts/package_plugin.py"
+    "package": "python3 scripts/package_plugin.py",
+    "media:release": "node scripts/capture_release_gifs.mjs"
   },
   "keywords": [
     "decky",
