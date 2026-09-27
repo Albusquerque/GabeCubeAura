@@ -27,7 +27,7 @@ Local custom artwork is preferred, including SteamGridDB replacements and
 images assigned to non-Steam shortcuts. In Artwork mode, the quick Decky panel
 shows the active game image directly above its exact 17-colour sample.
 
-![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](docs/media/animations/game-launch-palettes.gif)
+![Artwork mode with Deep Rock Galactic artwork](docs/media/artwork-mode-steam-machine.png)
 
 ### Game launch animations
 
@@ -35,14 +35,16 @@ GabeCubeAura can play a one-shot launch sequence when a new
 Steam AppID starts. **Game launches is independent from Artwork display**: it
 has its own Hero/Header/Capsule source and colour cache, extracts either two or
 three dominant colours locally, offers ten patterns, and uses a visible timer
-adjustable from 3 to 45 seconds. Short alerts pause that timer and the sequence resumes after the
-alert.
+adjustable from 3 to 45 seconds. Short alerts pause that timer and the sequence
+resumes after the alert.
 
-The animation above shows three separate AppIDs and the two- or three-colour
-palette extracted from each Library Hero. The animation below stays on Balatro
-and shows three of the ten available launch patterns at a deliberately slower pace.
+The first animation shows three separate AppIDs and the two- or three-colour
+palette extracted from each Library Hero. The second stays on Balatro and shows
+three of the ten available launch patterns at a deliberately slower pace.
 These are browser illustrations generated from the Concept Lab, not proof of
 physical LED colour fidelity.
+
+![Local artwork palette extraction for Deep Rock Galactic, The Witcher 3, and Balatro](docs/media/animations/game-launch-palettes.gif)
 
 ![Balatro launch animation using a two-colour palette with Crescendo, Color wipe, and Scanner](docs/media/animations/game-launch-patterns.gif)
 
