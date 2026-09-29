@@ -23,12 +23,19 @@ BLACK = (0, 0, 0)
 MAX_SAMPLE_AGE_SECONDS = 3600.0
 REFRESH_SECONDS = 900.0
 RETRY_SECONDS = 300.0
-CONDITIONS = ("clear_day", "clear_night", "rain", "cloud", "breaks", "breaks_night", "snow", "storm")
+CONDITIONS = (
+    "clear_day", "clear_night", "rain", "cloud", "cloud_night",
+    "breaks", "breaks_night", "snow", "storm",
+)
 VARIANT_NAMES = {
     "clear_day": ("Sun glints", "Solar bloom"),
-    "clear_night": ("Quiet constellation", "Silver hush"),
+    "clear_night": ("Breathing moon", "Lunar bloom"),
     "rain": ("Bluewater", "Pearl rain"),
     "cloud": ("Passing shadow", "Passing shadows", "Cross & gather", "Slow convergence"),
+    "cloud_night": (
+        "Night passing shadow", "Night passing shadows",
+        "Night cross & gather", "Night slow convergence",
+    ),
     "breaks": ("Sun through clouds", "Sun, fading clouds"),
     "breaks_night": ("Moon through clouds", "Moon, fading clouds"),
     "snow": ("Melting snowfall", "Snow takes hold"),
@@ -76,7 +83,7 @@ def _open_with_system_trust(request, first_error):
 
 
 def _read_json(url):
-    request = Request(url, headers={"User-Agent": "GabeCubeAura/1.0 weather"})
+    request = Request(url, headers={"User-Agent": "GabeCubeAura/1.2 weather"})
     try:
         response = urlopen(request, timeout=6)
     except URLError as error:
@@ -124,7 +131,7 @@ def condition_for_code(code, is_day=True):
     if code == 2:
         return "breaks" if is_day else "breaks_night"
     if code in {3, 45, 48}:
-        return "cloud"
+        return "cloud" if is_day else "cloud_night"
     if code in {0, 1}:
         return "clear_day" if is_day else "clear_night"
     return "cloud"

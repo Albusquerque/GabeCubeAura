@@ -1,7 +1,7 @@
 import type { Status, WeatherCondition } from "./types";
 
 const NAMES: Record<WeatherCondition, string> = {
-  clear_day: "Clear sky", clear_night: "Clear night", cloud: "Cloudy",
+  clear_day: "Clear sky", clear_night: "Clear night", cloud: "Cloudy", cloud_night: "Cloudy night",
   rain: "Rain", snow: "Snow", storm: "Thunderstorm",
   breaks: "Partly cloudy", breaks_night: "Partly cloudy night",
 };

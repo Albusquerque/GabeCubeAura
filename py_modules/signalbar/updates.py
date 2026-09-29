@@ -57,6 +57,9 @@ STABLE_VERSION = re.compile(r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 TEST_VERSION = re.compile(
     r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$"
 )
+BETA_VERSION = re.compile(
+    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta(0|[1-9]\d*)$"
+)
 HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -78,7 +81,17 @@ def _version_tuple(value: str, *, allow_test=False):
         if test:
             major, minor, patch, iteration = (int(part) for part in test.groups())
             return major, minor, patch, -1, iteration
+        beta = BETA_VERSION.fullmatch(text)
+        if beta:
+            major, minor, patch, iteration = (int(part) for part in beta.groups())
+            return major, minor, patch, -2, iteration
     raise UpdateError("invalid_version", "The release version is not a stable semantic version")
+
+
+def _version_order(value: str, *, allow_test=False):
+    """Return a comparable key where a stable release follows its prereleases."""
+    parsed = _version_tuple(value, allow_test=allow_test)
+    return (*parsed, 0, 0) if len(parsed) == 3 else parsed
 
 
 def _atomic_json(path: Path, value: dict):
@@ -193,8 +206,8 @@ class GitHubReleaseClient:
         html_url = str(release.get("html_url", ""))
         if not html_url.startswith(f"https://github.com/{OWNER}/{REPOSITORY}/releases/tag/"):
             raise UpdateError("metadata", "The release page does not belong to the official repository")
-        installed = _version_tuple(installed_version, allow_test=True)
-        if _version_tuple(version)[:3] <= installed[:3]:
+        installed = _version_order(installed_version, allow_test=True)
+        if _version_order(version) <= installed:
             return {
                 "not_modified": False,
                 "version": version,
@@ -426,8 +439,8 @@ class UpdateManager:
         try:
             stale_available = (
                 bool(available)
-                and _version_tuple(available)[:3]
-                <= _version_tuple(self.installed_version, allow_test=True)[:3]
+                and _version_order(available)
+                <= _version_order(self.installed_version, allow_test=True)
             )
         except UpdateError:
             stale_available = bool(available)
@@ -564,8 +577,8 @@ class UpdateManager:
                 try:
                     newer = (
                         bool(available)
-                        and _version_tuple(available)[:3]
-                        > _version_tuple(self.installed_version, allow_test=True)[:3]
+                        and _version_order(available)
+                        > _version_order(self.installed_version, allow_test=True)
                     )
                 except UpdateError:
                     newer = False
@@ -574,9 +587,9 @@ class UpdateManager:
                           next_check_at=now + CHECK_INTERVAL_SECONDS)
                 return self.status()
             self._release = release
-            installed = _version_tuple(self.installed_version, allow_test=True)
-            available = _version_tuple(release["version"])
-            newer = available[:3] > installed[:3]
+            installed = _version_order(self.installed_version, allow_test=True)
+            available = _version_order(release["version"])
+            newer = available > installed
             self._set(
                 phase="available" if newer else "up_to_date",
                 available_version=release["version"] if newer else "",

@@ -1,10 +1,39 @@
 # GabeCubeAura
 
-**Game artwork, custom effects, weather and live status lighting for the
-official Steam Machine's 17-pixel light bar.**
+**GabeCubeAura 1.2.0-beta1 adds real-time screen colours and richer night
+weather to the official Steam Machine's 17-pixel light bar.**
 
 Make your Steam Machine's 17-pixel light bar useful and a little more
-expressive. Choose separate permanent displays for Home and games, then let
+expressive. This beta combines the complete v1.1.0 feature set with live
+in-game colour, optional Steam screensaver matching and 8 night-weather
+transpositions. Existing GabeCubeAura and SignalBar settings remain compatible.
+
+This is a local test build. The latest public stable release remains
+[GabeCubeAura v1.1.0](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.0).
+
+## Screen Sync
+
+Screen Sync maps the running game's picture onto the light bar in real time.
+Panorama maps 17 horizontal screen zones to the 17 LEDs. Ambient calculates one
+calmer colour for the whole image. Processing stays on the Steam Machine,
+captured frames remain in memory, and no image is saved or sent over the
+network.
+
+The capture runs when Screen Sync is the effective display for a running game,
+while Steam's screensaver is active and opted in, or during the 15-second
+manual preview. It requests a 34 by 18 pixel Gamescope PipeWire stream at 10
+frames per second, detects stable cinematic black bars, reduces bright HUD
+influence, smooths scene changes and stops using a frame when it becomes stale.
+If recording or another Gamescope capture consumer is detected, the saved
+Customization+ effect takes over without competing for the stream.
+
+Screen Sync has its own settings page for Panorama or Ambient style,
+brightness, reactivity, colour intensity, black threshold and black-bar
+handling. It can be selected as the in-game default, saved per Steam AppID, or
+enabled independently for Steam's screensaver without changing either route.
+
+All existing routing still applies. Choose separate permanent displays for
+Home and games, then let
 temporary launch, playtime, and Steam moments take the stage before the
 selected display returns.
 
@@ -53,7 +82,7 @@ physical LED colour fidelity.
 Build a permanent Home or in-game display from one, two, or three exact
 opaque colours. Use the colour picker, Hex or RGB values, brightness from 34 to
 255, animation speed from 1 to 100, direction, and a live 17-LED
-preview. The 61 existing effect names are grouped by dynamism: Calm & ambient,
+preview. The 65 available effect names are grouped by dynamism: Calm & ambient,
 Flowing, and Energetic. Alpha is intentionally absent because the LED hardware
 and GabeCubeAura settings use RGB, not transparency.
 
@@ -130,11 +159,12 @@ invented; see the [controller test notes](docs/CONTROLLERS_RESEARCH.md).
 ### Weather
 
 Choose a city, then select Weather as the permanent Home or In-game display.
-Eighteen selectable loops cover clear skies, rain, cloud,
-partly cloudy day and night, snow, and storms. **Snow takes hold** is the
-default snow scene; all animations can be previewed without network access.
-Cloud has four choices, including **Cross & gather** and the longer **Slow
-convergence**, which is the fresh-install default. Existing Cloud selections
+Twenty-two selectable loops cover clear skies, rain, cloud, partly cloudy day
+and night, snow, and storms. This beta adds 8 night transpositions: two moon
+scenes, four night-cloud scenes and two moon-through-cloud scenes. They keep
+the approved daytime choreography while using a deep blue night field, neutral
+clouds and stepped moon whites. **Snow takes hold** is the default snow scene;
+all animations can be previewed without network access. Existing selections
 are kept.
 
 ![Weather animations on the Steam Machine light bar](docs/media/animations/weather.gif)
@@ -192,22 +222,25 @@ never modifies a playtime countdown or another event animation.
 GabeCubeAura follows a strict order:
 
 1. Disabled returns complete control to Steam.
-2. Short light/controller alerts may temporarily use a stable bar snapshot; a
-   new native LED write cancels them and is never overwritten by a stale frame.
-3. Valve/system ownership prevents persistent GabeCubeAura output.
-4. The final five minutes of a countdown cancel and outrank Game launches.
+2. Steam hard system priority blocks every GabeCubeAura write during startup,
+   downloads and repeated native LED activity.
+3. The final five minutes of a countdown cancel and outrank Game launches.
+4. Recording start and stop cues surround a Customization+ fallback with a
+   persistent red centre marker.
 5. Short alerts pause a Game launch's visible timer; the launch resumes after
    the alert.
 6. Game launches temporarily replace regular countdowns; those countdowns
    return afterwards.
-7. The selected permanent Home or In-game display returns after temporary
-   layers finish.
+7. Screen Sync, Artwork, Performance, Weather or Customization+ provides the
+   selected permanent display.
+8. A single native transition is allowed to settle before GabeCubeAura restores its
+   expected display. Repeated native writes keep control with Steam.
 
 ## Install
 
 ### Updates inside GabeCubeAura
 
-Version 1.1.0 adds a dedicated **Updates** page. GabeCubeAura checks the official
+GabeCubeAura includes a dedicated **Updates** page. It checks the official
 `Alyenax/GabeCubeAura` GitHub releases once a day and can show one Decky
 notification for each new stable version. It never installs an update without
 confirmation.
@@ -218,15 +251,16 @@ briefly. Settings and artwork caches remain outside the replaced plugin
 directory. If the new backend does not confirm a healthy startup within 45
 seconds, the previous plugin version is restored automatically.
 
-Existing v1.0.0 installations need one final manual installation of v1.1.0.
-Later releases can be downloaded and installed from **Settings > Updates**.
+The updater follows the stable release channel and ignores GitHub prereleases.
+Install this beta manually from its ZIP. A stable release newer than this
+beta's 1.2.0 version core can later be downloaded and installed from
+**Settings > Updates**.
 
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Download `GabeCubeAura-v1.1.0.zip` from the
-   [GabeCubeAura v1.1.0 release](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.0).
-   Do not extract it.
+2. Build this beta and use `out/GabeCubeAura-v1.2.0-beta1.zip`. Do not extract
+   it. The latest stable release remains v1.1.0.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
 4. Open **Decky > Settings > Developer**. Under **Third-Party Plugins**, choose
@@ -308,7 +342,7 @@ coarse battery data is not displayed as an exact percentage.
 ### Weather
 
 - Location selected manually by city or postal code; no automatic geolocation
-- Selectable through Home/In-game routing, with eighteen 17-LED animations
+- Selectable through Home/in-game routing, with 22 17-LED animations
 - Independent optional SteamOS top-bar icon and °C/°F temperature
 - Weather brightness and faint-pixel cutoff for the physical diffuser
 - Weather previews work without a city or network connection
@@ -356,6 +390,9 @@ own last verified write.
 
 - Designed for the official Steam Machine 17-pixel `valve-leds` light bar
 - Requires Decky Loader on SteamOS
+- Screen Sync requires the SteamOS Gamescope PipeWire source, `pw-dump` and
+  `gst-launch-1.0`. GabeCubeAura reports missing components and does not install
+  system packages automatically.
 - CPU and GPU sensors depend on paths exposed by the hardware and SteamOS build
 - Steam notifications and recording use private SteamClient callbacks that may
   change between Steam builds
@@ -377,12 +414,18 @@ corepack pnpm build
 corepack pnpm package
 ```
 
-The installable archives are written to `out/GabeCubeAura-v1.1.0.zip` and
+The installable archives are written to `out/GabeCubeAura-v1.2.0-beta1.zip` and
 `out/GabeCubeAura.zip`. Their identical SHA256 values are written to
 `out/SHA256SUMS`.
 
-See [the GabeCubeAura 1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.md) for the
-direct update flow and recovery model.
+See [the GabeCubeAura 1.2.0-beta1 release notes](docs/RELEASE_NOTES_1.2.0-beta1.md)
+for the complete beta scope and known limits.
+
+See [the Screen Sync implementation notes](docs/SCREEN_SYNC.md)
+for the implementation status, safety model and physical test checklist.
+
+See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.0-beta1.md) before using
+the build as a daily driver.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
 hardware-rendering details. Release history is available in

@@ -11,12 +11,20 @@ import {
   updateControllers,
   resetControllers,
   reportControllerTelemetry,
+  setScreenSyncContext,
 } from "./api";
 import { sampleArtwork } from "./artwork";
 import { ControllerMonitor, isSteamInputService } from "./controller_monitor";
 import { isSteamControllerStore } from "./controller_battery";
 import type { SteamControllerStore } from "./controller_battery";
 import { normalizeAppId } from "./steam_app_id";
+import { GameSessionLatch } from "./game_session";
+import type { GameSessionDecision } from "./game_session";
+import {
+  isSteamScreensaverService,
+  screensaverActiveFromResponse,
+} from "./steam_screensaver";
+import type { SteamScreensaverService } from "./steam_screensaver";
 import {
   classifySteamNotification,
   CommunityNotificationObserver,
@@ -53,12 +61,11 @@ function titleFor(appid: number): string {
 class GabeCubeAuraRuntime {
   private alive = false;
   private desired = { appid: 0, title: "", source: "startup", launchSequence: 0 };
+  private session = new GameSessionLatch();
   private baselineEstablished = false;
   private confirmedKey = "";
   private syncing = false;
   private artworkGeneration = 0;
-  private reportedAppId = 0;
-  private suppressedStaleAppId = 0;
   private parentalAppId = -1;
   private parentalWaitStartedAt = 0;
   private pollTimer: number | undefined;
@@ -75,16 +82,26 @@ class GabeCubeAuraRuntime {
   private lastNativeCommentAt = 0;
   private lastServerCommentAt = 0;
   private controllerMonitor: ControllerMonitor | undefined;
+  private downloadActive = false;
+  private screensaverService: SteamScreensaverService | undefined;
+  private screensaverPolling = false;
+  private screensaverFailures = 0;
 
   start() {
     if (this.alive) return;
     this.alive = true;
-    this.observeRunningApp("startup");
+    this.applySessionDecision(this.session.seed(runningApp()));
     // Establish the observed AppID before lifetime notifications are attached.
     // Some Steam builds replay the currently running session immediately.
     this.baselineEstablished = true;
     this.registerSteamEvents();
-    this.pollTimer = window.setInterval(() => this.observeRunningApp("poll fallback"), 2000);
+    this.pollTimer = window.setInterval(() => {
+      this.observeRunningApp();
+      this.renewSteamActivity();
+      void this.pollScreensaver();
+    }, 2000);
+    void setScreenSyncContext("steam-screensaver", false, "waiting", "").catch(() => undefined);
+    void this.pollScreensaver();
     console.log("[GabeCubeAura] background runtime started");
   }
 
@@ -106,29 +123,42 @@ class GabeCubeAuraRuntime {
     this.communityNotificationObserver.reset();
     this.lastNativeCommentAt = 0;
     this.lastServerCommentAt = 0;
+    this.downloadActive = false;
+    this.screensaverService = undefined;
+    this.screensaverFailures = 0;
     void this.controllerMonitor?.stop().then(() => resetControllers()).catch(console.warn);
     void setSteamActivity(false, "").catch(() => undefined);
+    void setScreenSyncContext("steam-screensaver", false, "waiting", "").catch(() => undefined);
     console.log("[GabeCubeAura] background runtime stopped");
   }
 
-  private observeRunningApp(source: string) {
-    const app = runningApp();
-    if (this.suppressedStaleAppId && app.appid === this.suppressedStaleAppId) {
-      this.requestGame(0, "", `${source}, stale AppID suppressed`);
-      return;
-    }
-    if (app.appid !== this.suppressedStaleAppId) this.suppressedStaleAppId = 0;
-    this.requestGame(app.appid, app.title, source);
+  private observeRunningApp() {
+    this.applySessionDecision(this.session.observePoll(runningApp()));
+    void reportRuntimeDiagnostic(
+      "heartbeat", this.desired.appid, "background runtime", 0,
+    ).catch(() => undefined);
   }
 
-  private requestGame(appid: number, title: string, source: string) {
+  private applySessionDecision(decision: GameSessionDecision) {
+    if (decision.action === "retain") {
+      void reportRuntimeDiagnostic(
+        "game_retained", decision.appid, decision.source, 0,
+      ).catch(() => undefined);
+      return;
+    }
+    if (decision.action === "update") {
+      this.requestGame(
+        decision.appid, decision.title, decision.source, decision.launch,
+      );
+    }
+  }
+
+  private requestGame(appid: number, title: string, source: string, launch = false) {
     if (!this.alive) return;
     const normalized = normalizeAppId(appid);
     const previousAppId = this.desired.appid;
     const changedApp = normalized !== previousAppId;
-    const isLaunch = normalized > 0 && changedApp && this.baselineEstablished && (
-      source === "Steam lifetime event" || previousAppId === 0 && source === "poll fallback"
-    );
+    const isLaunch = normalized > 0 && changedApp && this.baselineEstablished && Boolean(launch);
     const next = {
       appid: normalized,
       title: normalized > 0 ? String(title || "") : "",
@@ -136,7 +166,6 @@ class GabeCubeAuraRuntime {
       launchSequence: this.desired.launchSequence + (isLaunch ? 1 : 0),
     };
     this.desired = next;
-    this.reportedAppId = next.appid;
     if (changedApp) {
       this.artworkGeneration += 1;
     }
@@ -256,25 +285,27 @@ class GabeCubeAuraRuntime {
     this.registerLightEvents();
     this.registerControllerSignals();
     try {
-      this.gameRegistration = SteamClient?.GameSessions?.RegisterForAppLifetimeNotifications?.((event: any) => {
-        const appid = normalizeAppId(event?.unAppID);
-        if (event?.bRunning && appid > 0) {
-          this.suppressedStaleAppId = 0;
-          this.requestGame(appid, titleFor(appid) || runningApp().title, "Steam lifetime event");
-        } else if (appid > 0 && (appid === this.reportedAppId || appid === this.suppressedStaleAppId)) {
-          this.suppressedStaleAppId = appid;
-          this.requestGame(0, "", "Steam lifetime event");
-        }
-      });
+      const registerLifetime = SteamClient?.GameSessions?.RegisterForAppLifetimeNotifications;
+      if (typeof registerLifetime === "function") {
+        this.session.setLifetimeAvailable(true);
+        this.gameRegistration = registerLifetime.call(SteamClient.GameSessions, (event: any) => {
+          const appid = normalizeAppId(event?.unAppID);
+          this.applySessionDecision(this.session.observeLifetime(
+            appid,
+            Boolean(event?.bRunning),
+            titleFor(appid) || runningApp().title,
+          ));
+        });
+      }
     } catch (error) {
+      this.session.setLifetimeAvailable(false);
       console.warn("[GabeCubeAura] Steam game hook unavailable", error);
     }
     try {
       this.resumeRegistration = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(() => {
         void this.controllerMonitor?.refresh();
         const stale = runningApp();
-        if (stale.appid > 0) this.suppressedStaleAppId = stale.appid;
-        this.requestGame(0, "", "resume from suspend");
+        this.applySessionDecision(this.session.suspend(stale.appid));
       });
     } catch (error) {
       console.warn("[GabeCubeAura] Steam resume hook unavailable", error);
@@ -282,10 +313,54 @@ class GabeCubeAuraRuntime {
     try {
       this.downloadRegistration = SteamClient?.Downloads?.RegisterForDownloadOverview?.((overview: any) => {
         const active = overview?.update_state && overview.update_state !== "None";
-        void setSteamActivity(Boolean(active), active ? "Steam download activity" : "").catch(console.warn);
+        this.downloadActive = Boolean(active);
+        this.renewSteamActivity();
       });
     } catch (error) {
       console.warn("[GabeCubeAura] Steam download hook unavailable", error);
+    }
+  }
+
+  private renewSteamActivity() {
+    void setSteamActivity(
+      this.downloadActive,
+      this.downloadActive ? "Steam download activity" : "",
+    ).catch(console.warn);
+  }
+
+  private async pollScreensaver() {
+    if (!this.alive || this.screensaverPolling) return;
+    this.screensaverPolling = true;
+    try {
+      this.screensaverService ??= findModuleExport(isSteamScreensaverService);
+      if (!this.screensaverService) {
+        await setScreenSyncContext(
+          "steam-screensaver", false, "unavailable", "Steam screensaver service was not found",
+        );
+        return;
+      }
+      const response = await Promise.race([
+        Promise.resolve(this.screensaverService.GetActiveState({})),
+        new Promise<never>((_resolve, reject) => window.setTimeout(
+          () => reject(new Error("Steam screensaver state timed out")),
+          1200,
+        )),
+      ]);
+      const active = screensaverActiveFromResponse(response);
+      if (active === null) throw new Error("Steam screensaver state was not recognised");
+      this.screensaverFailures = 0;
+      await setScreenSyncContext("steam-screensaver", active, "available", "");
+    } catch (error) {
+      this.screensaverFailures += 1;
+      if (this.screensaverFailures >= 2) this.screensaverService = undefined;
+      await setScreenSyncContext(
+        "steam-screensaver",
+        false,
+        "error",
+        String(error instanceof Error ? error.message : error).slice(0, 180),
+      ).catch(() => undefined);
+    } finally {
+      this.screensaverPolling = false;
     }
   }
 

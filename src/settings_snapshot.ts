@@ -18,7 +18,7 @@ const selectedLabel = (options: readonly { data: string; label: string }[], valu
 const artworkSource = { hero: "Library Hero", header: "Library Header", capsule: "Library Capsule" };
 const artworkRow = { auto: "Auto", center: "Centre", lower: "Lower", manual: "Manual" };
 const displayMode = {
-  artwork: "Artwork", performance: "Performance", customization: "Customization+", steam: "GabeCubeAura Off",
+  artwork: "Artwork", performance: "Performance", customization: "Customization+", screen_sync: "Screen Sync", steam: "GabeCubeAura Off",
   weather: "Weather", controller: "Controller status", events: "Signals only", disabled: "Disabled",
 };
 const response = { responsive: "Responsive", balanced: "Balanced", smooth: "Smooth" };
@@ -76,6 +76,14 @@ export function buildSettingsSnapshot(status: Status): SettingsSnapshotSection[]
       ],
     },
     {
+      title: "Screen Sync",
+      lines: [
+        `Style ${status.screen_sync_style} · Reactivity ${status.screen_sync_reactivity} · Colours ${status.screen_sync_colour_intensity}`,
+        `Brightness ${status.screen_sync_brightness}/255 · Black threshold ${status.screen_sync_black_threshold} · Ignore black bars ${onOff(status.screen_sync_ignore_black_bars)}`,
+        `Steam screensaver ${onOff(status.screen_sync_screensaver_enabled)} · Activation ${status.screen_sync.activation.reason || "waiting"}`,
+      ],
+    },
+    {
       title: "Game launches",
       lines: [
         `Master ${onOff(status.launch_artwork_animation_enabled)} · ${status.launch_artwork_pattern} · ${status.launch_artwork_duration_seconds} s`,
@@ -115,7 +123,7 @@ export function buildSettingsSnapshot(status: Status): SettingsSnapshotSection[]
         `City ${status.weather_location ? `${status.weather_location.name}, ${status.weather_location.country}` : "none"} · Display ${status.weather_display}`,
         `SteamOS top bar ${onOff(status.weather_topbar_enabled)} · ${status.weather_temperature_unit === "fahrenheit" ? "Fahrenheit" : "Celsius"} · experimental`,
         `Weather LED brightness ${status.weather_brightness}% · Faint LED cutoff ${status.weather_shadow_cutoff} (linear RGB)`,
-        ...(["clear_day", "clear_night", "rain", "cloud", "breaks", "breaks_night", "snow", "storm"] as const).map((condition) =>
+        ...(["clear_day", "clear_night", "rain", "cloud", "cloud_night", "breaks", "breaks_night", "snow", "storm"] as const).map((condition) =>
           `${condition.replace("_", " ")}: ${WEATHER_VARIANTS[condition][status[`weather_${condition}_variant`]]?.label ?? "unknown"}`),
       ],
     },

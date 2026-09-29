@@ -318,6 +318,9 @@ class EventTests(unittest.TestCase):
                                     "controller_battery_display": "off"})
             engine.start()
             try:
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["debug"]["guard_state"] == "ready", timeout=3.0,
+                ))
                 self.assertTrue(engine.trigger_event("notification"))
                 self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "event:notification"))
                 self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "valve"))
@@ -337,6 +340,9 @@ class EventTests(unittest.TestCase):
                             hardware_factory=lambda: hardware, event_lease=lease)
             engine.start()
             try:
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["debug"]["guard_state"] == "ready", timeout=3.0,
+                ))
                 self.assertTrue(engine.trigger_event("notification"))
                 self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "event:notification"))
                 self.assertTrue(lease.refreshes)
@@ -392,6 +398,7 @@ class EventTests(unittest.TestCase):
             lease = RecordingLease()
             claim = RecordingStripMineClaim()
             settings = SettingsStore(str(Path(folder) / "settings.json"))
+            settings.update({"guard_stable_s": .5})
             engine = Engine(settings, str(Path(folder) / "artwork.json"),
                             hardware_factory=lambda: hardware, event_lease=lease,
                             stripmine_claim=claim)
@@ -414,6 +421,7 @@ class EventTests(unittest.TestCase):
             hardware = LoopHardware()
             claim = OrderedStripMineClaim(hardware)
             settings = SettingsStore(str(Path(folder) / "settings.json"))
+            settings.update({"guard_stable_s": .5})
             engine = Engine(settings, str(Path(folder) / "artwork.json"),
                             hardware_factory=lambda: hardware, stripmine_claim=claim)
             engine.arbiter.choose = lambda **_kwargs: ProviderOutput("performance", BASE, "test")
@@ -436,7 +444,7 @@ class EventTests(unittest.TestCase):
             claim = RecordingStripMineClaim()
             settings = SettingsStore(str(Path(folder) / "settings.json"))
             settings.update({"mode": "events", "controller_battery_display": "off",
-                             "weather_display": "off"})
+                             "weather_display": "off", "guard_stable_s": .5})
             engine = Engine(settings, str(Path(folder) / "artwork.json"),
                             hardware_factory=lambda: hardware, stripmine_claim=claim)
             engine.start()
@@ -458,6 +466,9 @@ class EventTests(unittest.TestCase):
             engine.update_settings({"events_enabled": True})
             engine.start()
             try:
+                self.assertTrue(self._wait_until(
+                    lambda: engine.status()["debug"]["guard_state"] == "ready", timeout=3.0,
+                ))
                 self.assertTrue(engine.trigger_event("notification"))
                 self.assertTrue(self._wait_until(lambda: engine.status()["provider"] == "event:notification"))
                 external = normalize_frame([(4, 5, 6)] * 17)
@@ -505,6 +516,17 @@ class EventTests(unittest.TestCase):
             self.assertTrue(engine.events.recording)
             self.assertFalse(engine.events.status()["active"])
             engine.set_game(0, "")
+            self.assertFalse(engine.events.recording)
+
+    def test_recording_capture_state_survives_disabled_visual_events(self):
+        with tempfile.TemporaryDirectory() as folder:
+            engine = Engine(SettingsStore(str(Path(folder) / "settings.json")),
+                            str(Path(folder) / "artwork.json"))
+            engine.update_settings({"events_enabled": False, "event_recording_enabled": False})
+            self.assertFalse(engine.trigger_event("record-start"))
+            self.assertTrue(engine.events.recording)
+            self.assertFalse(engine.events.status()["active"])
+            self.assertFalse(engine.trigger_event("record-stop"))
             self.assertFalse(engine.events.recording)
 
 

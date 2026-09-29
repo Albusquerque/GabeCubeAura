@@ -22,9 +22,12 @@ class Arbiter:
                signal=None, event=None, signal_critical=False, recording_marker=False,
                recording_marker_isolation=False, performance_always=False,
                controller_event=None, controller_base=None, weather_base=None,
-               customization_base=None, launch_artwork=None):
+               customization_base=None, screen_sync_base=None, screen_sync_fallback=None,
+               launch_artwork=None, steam_priority=False):
         if mode == "disabled":
             return ProviderOutput("none", None, "GabeCubeAura disabled")
+        if steam_priority:
+            return ProviderOutput("valve", None, "Steam system priority")
         # Short, opted-in effects can briefly use an otherwise native-owned bar.
         # The runtime still yields if it detects a new external write mid-effect.
         if controller_event is not None and controller_event.frame is not None and not signal_critical and controller_event.provider == "controller:low":
@@ -65,6 +68,17 @@ class Arbiter:
         elif mode == "customization":
             base = customization_base if customization_base is not None and customization_base.frame \
                 else ProviderOutput("none", None, "Customization+ unavailable")
+        elif mode == "screen_sync":
+            if screen_sync_base is not None and screen_sync_base.frame:
+                base = screen_sync_base
+            elif screen_sync_fallback is not None and screen_sync_fallback.frame:
+                base = ProviderOutput(
+                    screen_sync_fallback.provider,
+                    screen_sync_fallback.frame,
+                    "Screen Sync capture fallback",
+                )
+            else:
+                base = ProviderOutput("none", None, "Screen Sync unavailable")
         elif game.running and performance.frame:
             base = performance
         elif game.running and artwork.frame:
@@ -73,6 +87,6 @@ class Arbiter:
             base = idle
 
         return self._with_recording_marker(
-            base, recording_marker and base.provider.startswith(("performance", "artwork", "customization")),
+            base, recording_marker and base.provider.startswith(("performance", "artwork", "customization", "screen-sync")),
             recording_marker_isolation,
         )

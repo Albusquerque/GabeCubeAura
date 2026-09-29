@@ -26,6 +26,13 @@ export const submitArtwork = callable<[
 export const previewLaunchArtwork = callable<[], boolean>("preview_launch_artwork");
 export const previewCustomization = callable<[], boolean>("preview_customization");
 export const setSteamActivity = callable<[active: boolean, reason: string], boolean>("set_steam_activity");
+export const setScreenSyncContext = callable<[
+  context: "steam-screensaver",
+  active: boolean,
+  state: "waiting" | "available" | "unavailable" | "error",
+  detail: string,
+], boolean>("set_screen_sync_context");
+export const previewScreenSync = callable<[], Status>("preview_screen_sync");
 export const reportRuntimeDiagnostic = callable<[
   event: string,
   appid: number,

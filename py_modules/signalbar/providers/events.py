@@ -331,6 +331,10 @@ class EventProvider:
         with self._lock:
             return self._recording
 
+    def set_recording(self, active):
+        with self._lock:
+            self._recording = bool(active)
+
     def set_variants(self, values):
         with self._lock:
             for kind in ("notification", "achievement", "screenshot"):

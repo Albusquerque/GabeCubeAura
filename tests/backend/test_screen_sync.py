@@ -1,0 +1,225 @@
+from __future__ import annotations
+
+import unittest
+import tempfile
+from pathlib import Path
+
+from signalbar.arbiter import Arbiter
+from signalbar.arbiter.guard import ManualClock
+from signalbar.models import GameState, ProviderOutput, normalize_frame
+from signalbar.providers.screen_sync import (
+    CAPTURE_HEIGHT,
+    CAPTURE_WIDTH,
+    ScreenCaptureService,
+    ScreenSyncProcessor,
+    ScreenSyncProvider,
+)
+from signalbar.providers.events import RED
+from signalbar.settings import SettingsStore
+from signalbar.backend import Engine
+
+
+BLACK = normalize_frame([(0, 0, 0)] * 17)
+
+
+def bgrx_frame(pixel_at):
+    raw = bytearray()
+    for row in range(CAPTURE_HEIGHT):
+        for column in range(CAPTURE_WIDTH):
+            red, green, blue = pixel_at(row, column)
+            raw.extend((blue, green, red, 0))
+    return bytes(raw)
+
+
+class FakeCapture:
+    def __init__(self, clock, frame):
+        self.clock = clock
+        self.frame = frame
+        self.sequence = 1
+        self.sampled_at = clock()
+        self.active = False
+
+    def set_active(self, active):
+        self.active = bool(active)
+
+    def stop(self):
+        self.active = False
+
+    def latest(self):
+        return self.frame, self.sequence, self.sampled_at
+
+    def status(self):
+        return {
+            "phase": "capturing" if self.active else "off",
+            "error": "",
+            "node_id": 42,
+            "node_name": "Gamescope",
+            "conflicting_consumers": 0,
+            "frame_age_s": max(0, self.clock() - self.sampled_at),
+            "frames_per_second": 10.0,
+        }
+
+
+VALUES = {
+    "screen_sync_style": "panorama",
+    "screen_sync_brightness": 255,
+    "screen_sync_reactivity": "balanced",
+    "screen_sync_colour_intensity": "natural",
+    "screen_sync_black_threshold": 8,
+    "screen_sync_ignore_black_bars": True,
+}
+
+
+class ScreenSyncProcessorTests(unittest.TestCase):
+    def test_panorama_preserves_left_and_right_colours(self):
+        raw = bgrx_frame(lambda _row, column: (255, 0, 0) if column < 17 else (0, 0, 255))
+        frame = ScreenSyncProcessor().process(raw, brightness=255)
+        self.assertEqual(len(frame), 17)
+        self.assertGreater(frame[0][0], 240)
+        self.assertLess(frame[0][2], 10)
+        self.assertGreater(frame[-1][2], 240)
+        self.assertLess(frame[-1][0], 10)
+
+    def test_ambient_repeats_one_global_colour(self):
+        raw = bgrx_frame(lambda _row, column: (240, 30, 0) if column < 17 else (0, 30, 240))
+        frame = ScreenSyncProcessor().process(raw, style="ambient", brightness=255)
+        self.assertEqual(len(set(frame)), 1)
+        self.assertGreater(frame[0][0], 100)
+        self.assertGreater(frame[0][2], 100)
+
+    def test_black_bars_are_only_ignored_after_three_consistent_frames(self):
+        raw = bgrx_frame(
+            lambda row, _column: (0, 0, 0) if row < 3 or row >= CAPTURE_HEIGHT - 2 else (0, 200, 40)
+        )
+        processor = ScreenSyncProcessor()
+        processor.process(raw)
+        processor.process(raw)
+        processor.process(raw)
+        self.assertEqual(processor.crop, (3, 2))
+
+    def test_three_black_frames_force_immediate_black(self):
+        processor = ScreenSyncProcessor()
+        bright = bgrx_frame(lambda _row, _column: (255, 255, 255))
+        dark = bgrx_frame(lambda _row, _column: (0, 0, 0))
+        processor.process(bright, brightness=255, reactivity="calm")
+        processor.process(dark, brightness=255, reactivity="calm")
+        processor.process(dark, brightness=255, reactivity="calm")
+        frame = processor.process(dark, brightness=255, reactivity="calm")
+        self.assertEqual(frame, BLACK)
+
+    def test_bad_frame_size_is_rejected(self):
+        with self.assertRaises(ValueError):
+            ScreenSyncProcessor().process(b"short")
+
+
+class ScreenCaptureDiscoveryTests(unittest.TestCase):
+    def test_gamescope_video_source_wins_over_camera(self):
+        dump = [
+            {"id": 3, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Video/Source", "node.name": "v4l2-camera"}}},
+            {"id": 9, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Video/Source", "node.name": "gamescope",
+                "node.description": "Gamescope Video"}}},
+        ]
+        self.assertEqual(ScreenCaptureService.find_gamescope_node(dump), (9, "gamescope Gamescope Video"))
+
+    def test_consumer_count_only_includes_links_from_selected_node(self):
+        dump = [
+            {"type": "PipeWire:Interface:Link", "info": {"state": "active", "props": {
+                "link.output.node": 9}}},
+            {"type": "PipeWire:Interface:Link", "info": {"state": "error", "props": {
+                "link.output.node": 9}}},
+            {"type": "PipeWire:Interface:Link", "info": {"state": "active", "props": {
+                "link.output.node": 3}}},
+        ]
+        self.assertEqual(ScreenCaptureService.count_consumers(dump, 9), 1)
+
+
+class ScreenSyncProviderTests(unittest.TestCase):
+    def test_engine_capture_policy_stops_for_exit_guard_critical_and_stripmine(self):
+        values = {"signalbar_enabled": True, "stripmine_priority_screen_sync": "signalbar"}
+        should_run = Engine._screen_sync_should_run
+        self.assertTrue(should_run(values, True, False, True, False))
+        self.assertFalse(should_run(values, False, False, True, False))
+        self.assertFalse(should_run(values, True, True, True, False))
+        self.assertFalse(should_run(values, True, False, False, False))
+        self.assertFalse(should_run(values, True, False, True, False, recording=True))
+        self.assertFalse(should_run(
+            values, True, False, False, True, steam_priority=True,
+        ))
+        self.assertTrue(should_run(values, True, False, False, True))
+        values["stripmine_priority_screen_sync"] = "stripmine"
+        self.assertFalse(should_run(values, True, False, True, True))
+
+    def test_screen_sync_settings_validate_and_route_per_game(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(str(Path(directory) / "settings.json"))
+            values = store.update({
+                "game_display": "screen_sync",
+                "screen_sync_style": "bad",
+                "screen_sync_brightness": 2,
+                "screen_sync_reactivity": "fast",
+                "screen_sync_colour_intensity": "vivid",
+                "screen_sync_black_threshold": 80,
+                "screen_sync_screensaver_enabled": 1,
+            })
+            self.assertEqual(values["screen_sync_style"], "panorama")
+            self.assertEqual(values["screen_sync_brightness"], 34)
+            self.assertEqual(values["screen_sync_reactivity"], "fast")
+            self.assertEqual(values["screen_sync_colour_intensity"], "vivid")
+            self.assertEqual(values["screen_sync_black_threshold"], 32)
+            self.assertTrue(values["screen_sync_screensaver_enabled"])
+            self.assertEqual(store.display_for(42)["mode"], "screen_sync")
+            store.update_display(42, "artwork")
+            self.assertEqual(store.display_for(42)["mode"], "artwork")
+
+    def test_provider_processes_only_fresh_frames_and_exposes_palette(self):
+        clock = ManualClock(10)
+        capture = FakeCapture(clock, bgrx_frame(lambda _row, _column: (10, 180, 240)))
+        provider = ScreenSyncProvider(capture=capture, clock=clock)
+        provider.set_active(True)
+        output = provider.output(VALUES)
+        self.assertEqual(output.provider, "screen-sync")
+        self.assertEqual(len(output.frame), 17)
+        self.assertEqual(len(provider.status()["colors"]), 17)
+        clock.advance(1.1)
+        self.assertIsNone(provider.output(VALUES).frame)
+        provider.set_active(False)
+        self.assertFalse(capture.active)
+
+    def test_arbiter_treats_screen_sync_as_a_permanent_game_display(self):
+        output = ProviderOutput("screen-sync", normalize_frame([(10, 20, 30)] * 17), "live")
+        none = ProviderOutput("none", None, "none")
+        result = Arbiter().choose(
+            mode="screen_sync", guard_allows=True, game=GameState(42, "Game"),
+            performance=none, artwork=none, idle=none, screen_sync_base=output,
+        )
+        self.assertEqual(result.provider, "screen-sync")
+
+    def test_customization_fallback_keeps_recording_marker(self):
+        none = ProviderOutput("none", None, "none")
+        fallback = ProviderOutput("customization:steady", normalize_frame([(4, 8, 12)] * 17), "fallback")
+        result = Arbiter().choose(
+            mode="screen_sync", guard_allows=True, game=GameState(42, "Game"),
+            performance=none, artwork=none, idle=none, screen_sync_base=none,
+            screen_sync_fallback=fallback, recording_marker=True,
+            recording_marker_isolation=True,
+        )
+        self.assertTrue(result.provider.startswith("customization:steady+recording"))
+        self.assertEqual(result.frame[8], RED)
+        self.assertEqual(result.frame[7], (0, 0, 0))
+        self.assertEqual(result.frame[9], (0, 0, 0))
+
+    def test_steam_system_priority_blocks_events_and_fallback(self):
+        frame = ProviderOutput("event:notification", normalize_frame([(20, 30, 40)] * 17), "event")
+        result = Arbiter().choose(
+            mode="screen_sync", guard_allows=False, game=GameState(42, "Game"),
+            performance=frame, artwork=frame, idle=frame, event=frame,
+            screen_sync_base=frame, screen_sync_fallback=frame, steam_priority=True,
+        )
+        self.assertEqual(result.provider, "valve")
+        self.assertIsNone(result.frame)
+
+
+if __name__ == "__main__":
+    unittest.main()

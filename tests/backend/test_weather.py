@@ -79,7 +79,7 @@ class WeatherTests(unittest.TestCase):
                 store = SettingsStore(str(path))
                 self.assertEqual(store.all()["weather_cloud_variant"], existing)
                 store.update({"weather_brightness": 70})
-                self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["weather_sequence_revision"], 11)
+                self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["weather_sequence_revision"], 12)
             path.write_text(json.dumps({"weather_sequence_revision": 11,
                                         "weather_cloud_variant": 3}), encoding="utf-8")
             self.assertEqual(SettingsStore(str(path)).all()["weather_cloud_variant"], 3)
@@ -105,21 +105,34 @@ class WeatherTests(unittest.TestCase):
             original = weather_sequence(condition, 0, 3)
             fading = weather_sequence(condition, 1, 3)
             for edge in (0, 1, 2, 14, 15, 16):
-                self.assertGreater(original[edge][0], 50)
-                self.assertEqual(fading[edge], [0, 0, 0])
+                if condition == "breaks_night":
+                    self.assertEqual(original[edge], [35, 35, 35])
+                    self.assertEqual(fading[edge], [0, 8, 38])
+                else:
+                    self.assertGreater(original[edge][0], 50)
+                    self.assertEqual(fading[edge], [0, 0, 0])
             self.assertGreater(fading[8][0], 200)
             for variant in (0, 1):
                 for tick in range(80):
                     for red, green, blue in weather_sequence(condition, variant, tick / 10):
                         if red == green == blue:
                             continue  # Clouds have only neutral-white or black pixels.
-                        self.assertGreaterEqual(red, 165)  # No dim warm/brown fringe.
-                        self.assertGreaterEqual(green / red, .95)
-                        self.assertGreaterEqual(blue, 30)
+                        if condition == "breaks_night":
+                            self.assertIn([red, green, blue], ([0, 8, 38], [128, 128, 128],
+                                                             [192, 192, 192], [255, 255, 255]))
+                        else:
+                            self.assertGreaterEqual(red, 165)  # No dim warm/brown fringe.
+                            self.assertGreaterEqual(green / red, .95)
+                            self.assertGreaterEqual(blue, 30)
             for variant in (0, 1):
                 for tick in range(80):
                     for red, green, blue in weather_frame(condition, variant, tick / 10, DEFAULTS):
-                        if red != green or green != blue:
+                        if condition == "breaks_night":
+                            self.assertIn((red, green, blue), (
+                                (0, 8, 38), (35, 35, 35), (128, 128, 128),
+                                (192, 192, 192), (255, 255, 255),
+                            ))
+                        elif red != green or green != blue:
                             self.assertGreaterEqual(green / red, .95)
         with tempfile.TemporaryDirectory() as folder:
             store = SettingsStore(str(Path(folder) / "settings.json"))
@@ -155,7 +168,7 @@ class WeatherTests(unittest.TestCase):
             self.assertEqual(values["weather_storm_variant"], 1)
             store.update({"weather_brightness": 60})
             saved = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(saved["weather_sequence_revision"], 11)
+            self.assertEqual(saved["weather_sequence_revision"], 12)
             self.assertEqual(saved["weather_temperature_unit"], "fahrenheit")
             self.assertEqual(SettingsStore(str(path)).all()["weather_rain_variant"], 1)
 
@@ -172,6 +185,8 @@ class WeatherTests(unittest.TestCase):
         self.assertIsNone(no_temp["temperature_c"])
         self.assertEqual(condition_for_code(2, 0), "breaks_night")
         self.assertEqual(condition_for_code(2, 1), "breaks")
+        self.assertEqual(condition_for_code(3, 0), "cloud_night")
+        self.assertEqual(condition_for_code(3, 1), "cloud")
         self.assertEqual(condition_for_code(75, 1), "snow")
         self.assertEqual(search_cities("Paris", lambda url: {"results": [CITY]}), [CITY])
 
@@ -195,12 +210,52 @@ class WeatherTests(unittest.TestCase):
                 for red, green, blue in weather_frame("clear_day", variant, t, values):
                     self.assertGreaterEqual(red, green)
                     self.assertGreaterEqual(green, blue)
-            for condition in ("clear_night", "cloud", "snow", "storm"):
+            for condition in ("cloud", "snow", "storm"):
                 for variant in range(len(VARIANT_NAMES[condition])):
                     for pixel in weather_frame(condition, variant, t, values):
                         self.assertLessEqual(max(pixel) - min(pixel), 1)
         self.assertLess(max(weather_frame("rain", 1, 0, values)[0]),
                         max(weather_frame("cloud", 0, 0, values)[0]))
+
+    def test_night_transpositions_match_mockup_palette_and_timing(self):
+        night = [0, 8, 38]
+        cloud = [35, 35, 35]
+        allowed = {tuple(night), tuple(cloud), (128, 128, 128),
+                   (192, 192, 192), (255, 255, 255)}
+        self.assertEqual(VARIANT_NAMES["clear_night"], ("Breathing moon", "Lunar bloom"))
+        self.assertEqual(VARIANT_NAMES["cloud_night"], (
+            "Night passing shadow", "Night passing shadows",
+            "Night cross & gather", "Night slow convergence",
+        ))
+        self.assertEqual(DEFAULTS["weather_cloud_night_variant"], 2)
+        self.assertEqual(weather_loop_seconds("clear_night", 0), 6)
+        self.assertEqual(weather_loop_seconds("clear_night", 1), 8)
+        self.assertEqual(weather_loop_seconds("cloud_night", 2), 20)
+        self.assertEqual(weather_loop_seconds("cloud_night", 3), 48)
+
+        start = weather_sequence("clear_night", 0, 0)
+        self.assertEqual(start[8:10], [[192, 192, 192], [192, 192, 192]])
+        self.assertTrue(all(pixel == night for pixel in start[:8] + start[10:]))
+        full = weather_sequence("clear_night", 0, 3)
+        self.assertEqual(full[7:11], [[255, 255, 255]] * 4)
+        self.assertTrue(all(pixel == cloud for pixel in weather_sequence("cloud_night", 0, 0)))
+        fading = weather_sequence("breaks_night", 1, 3)
+        self.assertEqual(fading[0], night)
+        self.assertIn(tuple(fading[8]), allowed)
+
+        for condition in ("clear_night", "cloud_night", "breaks_night"):
+            for variant in range(len(VARIANT_NAMES[condition])):
+                duration = weather_loop_seconds(condition, variant)
+                for tick in range(round(duration * 5)):
+                    frame = weather_sequence(condition, variant, tick / 5)
+                    self.assertTrue(all(tuple(pixel) in allowed for pixel in frame),
+                                    (condition, variant, tick, frame))
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            store = SettingsStore(str(path))
+            store.update({"weather_cloud_night_variant": 3})
+            self.assertEqual(SettingsStore(str(path)).all()["weather_cloud_night_variant"], 3)
 
     def test_settings_contexts_and_preview_priority(self):
         with tempfile.TemporaryDirectory() as folder:

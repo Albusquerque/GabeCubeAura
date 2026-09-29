@@ -16,6 +16,13 @@ DEFAULTS = {
     "home_display": "controller",
     "game_display": "performance",
     "display_profiles": {},
+    "screen_sync_style": "panorama",
+    "screen_sync_brightness": 160,
+    "screen_sync_reactivity": "balanced",
+    "screen_sync_colour_intensity": "natural",
+    "screen_sync_black_threshold": 8,
+    "screen_sync_ignore_black_bars": True,
+    "screen_sync_screensaver_enabled": False,
     "customization_pattern": "steady",
     "customization_colour_count": 1,
     "customization_colour_1": [255, 120, 24],
@@ -90,11 +97,12 @@ DEFAULTS = {
     "weather_temperature_unit": "celsius",
     "weather_brightness": 100,
     "weather_shadow_cutoff": 0,
-    "weather_sequence_revision": 11,
+    "weather_sequence_revision": 12,
     "weather_clear_day_variant": 0,
     "weather_clear_night_variant": 0,
     "weather_rain_variant": 0,
     "weather_cloud_variant": 3,
+    "weather_cloud_night_variant": 2,
     "weather_breaks_variant": 0,
     "weather_breaks_night_variant": 0,
     "weather_snow_variant": 1,
@@ -107,15 +115,19 @@ DEFAULTS = {
     "stripmine_priority_light_events": "signalbar",
     "stripmine_priority_game_launches": "signalbar",
     "stripmine_priority_customization": "stripmine",
+    "stripmine_priority_screen_sync": "stripmine",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
     "updates_auto_check": True,
     "updates_notifications": True,
 }
 
-VALID_MODES = {"artwork", "performance", "customization", "events", "disabled"}
+VALID_MODES = {"artwork", "performance", "customization", "screen_sync", "events", "disabled"}
 VALID_HOME_DISPLAYS = {"steam", "customization", "performance", "weather", "controller"}
-VALID_GAME_DISPLAYS = {"steam", "customization", "artwork", "performance", "weather", "controller"}
+VALID_GAME_DISPLAYS = {"steam", "customization", "artwork", "performance", "screen_sync", "weather", "controller"}
+VALID_SCREEN_SYNC_STYLES = {"panorama", "ambient"}
+VALID_SCREEN_SYNC_REACTIVITY = {"calm", "balanced", "fast"}
+VALID_SCREEN_SYNC_COLOUR_INTENSITY = {"natural", "vivid"}
 VALID_ARTWORK_MODES = {"auto", "center", "lower", "manual"}
 VALID_ARTWORK_SOURCES = {"hero", "header", "capsule"}
 VALID_LAUNCH_ARTWORK_PATTERNS = {
@@ -152,8 +164,11 @@ CONTROLLER_VARIANTS = {
     "controller_duo_variant": {"twin", "focus", "double-welcome"},
 }
 WEATHER_VARIANT_KEYS = tuple(key for key in DEFAULTS if key.startswith("weather_") and key.endswith("_variant"))
-WEATHER_VARIANT_COUNTS = {"clear_day": 2, "clear_night": 2, "rain": 2, "cloud": 4,
-                          "breaks": 2, "breaks_night": 2, "snow": 2, "storm": 2}
+WEATHER_VARIANT_COUNTS = {
+    "clear_day": 2, "clear_night": 2, "rain": 2, "cloud": 4,
+    "cloud_night": 4, "breaks": 2, "breaks_night": 2,
+    "snow": 2, "storm": 2,
+}
 
 
 def _valid_weather_location(value):
@@ -188,7 +203,7 @@ class SettingsStore:
                     for key in DEFAULTS:
                         if key in raw:
                             self._data[key] = raw[key]
-                    if raw.get("weather_sequence_revision") not in (10, 11):
+                    if raw.get("weather_sequence_revision") not in (10, 11, 12):
                         migration = {
                             "clear_night": {0: 0, 3: 1},
                             "rain": {2: 0, 3: 1},
@@ -197,7 +212,7 @@ class SettingsStore:
                         for condition, variants in migration.items():
                             key = f"weather_{condition}_variant"
                             self._data[key] = variants.get(raw.get(key), 0)
-                        self._data["weather_sequence_revision"] = 11
+                        self._data["weather_sequence_revision"] = 12
                     if "controller_charging_mode" not in raw:
                         display = raw.get("controller_charging_display")
                         if display == "home":
@@ -252,6 +267,7 @@ class SettingsStore:
             "stripmine_priority_light_events",
             "stripmine_priority_game_launches",
             "stripmine_priority_customization",
+            "stripmine_priority_screen_sync",
         ):
             if self._data[key] not in VALID_COMPANION_PRIORITIES:
                 self._data[key] = DEFAULTS[key]
@@ -266,6 +282,24 @@ class SettingsStore:
             self._data["home_display"] = DEFAULTS["home_display"]
         if self._data["game_display"] not in VALID_GAME_DISPLAYS:
             self._data["game_display"] = DEFAULTS["game_display"]
+        if self._data["screen_sync_style"] not in VALID_SCREEN_SYNC_STYLES:
+            self._data["screen_sync_style"] = DEFAULTS["screen_sync_style"]
+        if self._data["screen_sync_reactivity"] not in VALID_SCREEN_SYNC_REACTIVITY:
+            self._data["screen_sync_reactivity"] = DEFAULTS["screen_sync_reactivity"]
+        if self._data["screen_sync_colour_intensity"] not in VALID_SCREEN_SYNC_COLOUR_INTENSITY:
+            self._data["screen_sync_colour_intensity"] = DEFAULTS["screen_sync_colour_intensity"]
+        self._data["screen_sync_ignore_black_bars"] = bool(self._data["screen_sync_ignore_black_bars"])
+        self._data["screen_sync_screensaver_enabled"] = bool(
+            self._data["screen_sync_screensaver_enabled"]
+        )
+        for key, lower, upper in (
+            ("screen_sync_brightness", 34, 255),
+            ("screen_sync_black_threshold", 0, 32),
+        ):
+            try:
+                self._data[key] = max(lower, min(upper, int(round(float(self._data[key])))))
+            except (TypeError, ValueError, OverflowError):
+                self._data[key] = DEFAULTS[key]
         if self._data["customization_pattern"] not in VALID_CUSTOMIZATION_PATTERNS:
             self._data["customization_pattern"] = DEFAULTS["customization_pattern"]
         if self._data["customization_direction"] not in VALID_CUSTOMIZATION_DIRECTIONS:
@@ -373,7 +407,7 @@ class SettingsStore:
                 self._data[key] = max(lower, min(upper, int(round(float(self._data[key])))))
             except (TypeError, ValueError, OverflowError):
                 self._data[key] = DEFAULTS[key]
-        self._data["weather_sequence_revision"] = 11
+        self._data["weather_sequence_revision"] = 12
         for key in WEATHER_VARIANT_KEYS:
             try:
                 value = int(self._data[key])
@@ -400,7 +434,7 @@ class SettingsStore:
         self._data["performance_always"] = self._data["home_display"] == "performance"
         self._data["mode"] = (
             "disabled" if not self._data["signalbar_enabled"]
-            else self._data["game_display"] if self._data["game_display"] in {"artwork", "performance", "customization"}
+            else self._data["game_display"] if self._data["game_display"] in {"artwork", "performance", "customization", "screen_sync"}
             else "events"
         )
         charging_mode = self._data["controller_charging_mode"]
@@ -528,7 +562,7 @@ class SettingsStore:
                 legacy_mode = changes["mode"]
                 if legacy_mode == "disabled":
                     changes = {**changes, "signalbar_enabled": False}
-                elif legacy_mode in {"artwork", "performance", "customization"}:
+                elif legacy_mode in {"artwork", "performance", "customization", "screen_sync"}:
                     changes = {**changes, "signalbar_enabled": True, "game_display": legacy_mode}
                 elif legacy_mode == "events":
                     changes = {**changes, "signalbar_enabled": True, "game_display": "steam"}
@@ -644,7 +678,7 @@ class SettingsStore:
             selected = default if override == "inherit" else override
             mode = (
                 "disabled" if not self._data["signalbar_enabled"]
-                else selected if selected in {"artwork", "performance", "customization"} else "events"
+                else selected if selected in {"artwork", "performance", "customization", "screen_sync"} else "events"
             )
             return {"default": default, "override": override, "selected": selected, "mode": mode}
 

@@ -1,6 +1,6 @@
-export type Mode = "artwork" | "performance" | "customization" | "events" | "disabled";
+export type Mode = "artwork" | "performance" | "customization" | "screen_sync" | "events" | "disabled";
 export type HomeDisplay = "steam" | "customization" | "performance" | "weather" | "controller";
-export type GameDisplay = "steam" | "customization" | "artwork" | "performance" | "weather" | "controller";
+export type GameDisplay = "steam" | "customization" | "artwork" | "performance" | "screen_sync" | "weather" | "controller";
 export type ArtworkMode = "auto" | "center" | "lower" | "manual";
 export type ArtworkSource = "hero" | "header" | "capsule";
 export type LaunchArtworkPattern = "arpege-crossed" | "two-hands" | "legato" | "nocturne" | "crescendo"
@@ -13,7 +13,7 @@ export type TemperaturePalette = "thermal" | "classic" | "icefire" | "custom";
 export type CountdownColour = "cyan" | "green" | "amber" | "violet" | "white";
 export type RGB = [number, number, number];
 export type CompanionPriority = "stripmine" | "signalbar";
-export type WeatherCondition = "clear_day" | "clear_night" | "rain" | "cloud" | "breaks" | "breaks_night" | "snow" | "storm";
+export type WeatherCondition = "clear_day" | "clear_night" | "rain" | "cloud" | "cloud_night" | "breaks" | "breaks_night" | "snow" | "storm";
 export interface WeatherLocation { name: string; country: string; latitude: number; longitude: number }
 
 export type UpdatePhase = "idle" | "checking" | "up_to_date" | "available"
@@ -97,6 +97,13 @@ export interface Status {
   customization_brightness: number;
   customization_speed: number;
   customization_direction: "forward" | "reverse";
+  screen_sync_style: "panorama" | "ambient";
+  screen_sync_brightness: number;
+  screen_sync_reactivity: "calm" | "balanced" | "fast";
+  screen_sync_colour_intensity: "natural" | "vivid";
+  screen_sync_black_threshold: number;
+  screen_sync_ignore_black_bars: boolean;
+  screen_sync_screensaver_enabled: boolean;
   cool_temp_c: number;
   hot_temp_c: number;
   reverse_led_order: boolean;
@@ -148,10 +155,12 @@ export interface Status {
   stripmine_priority_light_events: CompanionPriority;
   stripmine_priority_game_launches: CompanionPriority;
   stripmine_priority_customization: CompanionPriority;
+  stripmine_priority_screen_sync: CompanionPriority;
   weather_clear_day_variant: number;
   weather_clear_night_variant: number;
   weather_rain_variant: number;
   weather_cloud_variant: number;
+  weather_cloud_night_variant: number;
   weather_breaks_variant: number;
   weather_breaks_night_variant: number;
   weather_snow_variant: number;
@@ -216,6 +225,30 @@ export interface Status {
     preview_active: boolean;
     colors: RGB[];
   };
+  screen_sync: {
+    active: boolean;
+    phase: "off" | "capturing" | "conflict" | "error";
+    error: string;
+    node_id: number | null;
+    node_name: string;
+    conflicting_consumers: number;
+    frame_age_s: number | null;
+    frames_per_second: number;
+    crop_top: number;
+    crop_bottom: number;
+    colors: RGB[];
+    fallback_active: boolean;
+    fallback_reason: string;
+    activation: {
+      requested: boolean;
+      reason: "" | "game-route" | "steam-screensaver" | "manual-preview";
+      preview_remaining_s: number;
+      screensaver_active: boolean;
+      screensaver_lease_remaining_s: number;
+      screensaver_detection: "waiting" | "available" | "unavailable" | "error";
+      screensaver_detail: string;
+    };
+  };
   countdown: {
     active: boolean;
     source: "" | "parental" | "free" | "preview";
@@ -239,10 +272,19 @@ export interface Status {
     stable_remaining: number;
     guard_state: "ready" | "blocked";
     guard_reason: string;
+    steam_priority: boolean;
+    steam_priority_reason: string;
+    steam_lease_remaining_s: number;
+    launch_handoff_remaining_s: number;
+    last_recovery_age_s: number | null;
+    last_recovery_reason: string;
     reverse_led_order: boolean;
     appid: number;
     game_detection_source: string;
     game_sync_ms: number | null;
+    game_session_state: string;
+    game_retained_count: number;
+    frontend_heartbeat_age_s: number | null;
     parental_callback_state: "idle" | "disabled" | "waiting" | "received";
     parental_callback_delay_ms: number | null;
     parental_wait_s: number | null;

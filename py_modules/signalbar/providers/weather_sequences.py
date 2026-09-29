@@ -11,13 +11,18 @@ import math
 LED_COUNT = 17
 CLOUD_CROSS_GATHER_SECONDS = 20.0
 CLOUD_SLOW_CONVERGENCE_SECONDS = 48.0
+NIGHT = [0, 8, 38]
+NIGHT_CLOUD = [35, 35, 35]
+MOON_WHITES = ([128, 128, 128], [192, 192, 192], [255, 255, 255])
 
 
 def weather_loop_seconds(condition, variant):
-    if condition == "cloud" and variant == 2:
+    if condition in {"cloud", "cloud_night"} and variant == 2:
         return CLOUD_CROSS_GATHER_SECONDS
-    if condition == "cloud" and variant == 3:
+    if condition in {"cloud", "cloud_night"} and variant == 3:
         return CLOUD_SLOW_CONVERGENCE_SECONDS
+    if condition == "clear_night" and variant == 0:
+        return 6.0
     return 8.0
 
 # Fixed, irregular timing makes the ripple repeatable in previews and tests.
@@ -95,23 +100,43 @@ def _sun(frame, variant, time):
             frame[index] = mix(pixel,[255,239,151],field*(.48+.39*bloom)*(1-distance/45))
 
 
-def _moon(frame, variant, time):
-    # Quiet Constellation and Silver Hush: fixed points, one slow breath.
-    phase = math.pi*time/4
-    breath = .65+.35*(.5+.5*math.cos(phase))
+def _night_base(frame):
     for index in range(LED_COUNT):
-        add(frame,index,[25,29,37],.7)
-    if variant == 0:  # Quiet Constellation
-        glow(frame,8,[172,178,186],5,.28*breath)
-        for star,offset in ((4,0),(8,.55),(13,1.10)):
-            glow(frame,star,[210,212,216],.5,.16+.045*math.cos(phase+offset))
-    else:  # Silver Hush
-        glow(frame,8,[210,212,216],2.7,.42*breath)
-        glow(frame,8,[172,178,186],5,.23*breath)
-    for index,pixel in enumerate(frame):
-        level = max(pixel)
-        neutral = clamp(48+(level-20)*.49) if level >= 20 else 0
-        frame[index] = [neutral]*3
+        frame[index] = NIGHT[:]
+
+
+def _moon_white_step(value):
+    if value < .28:
+        return NIGHT
+    if value < .58:
+        return MOON_WHITES[0]
+    if value < .84:
+        return MOON_WHITES[1]
+    return MOON_WHITES[2]
+
+
+def _moon(frame, variant, time):
+    """Transpose the approved daytime clear-sky choreography to night."""
+    _night_base(frame)
+    if variant == 0:  # Breathing moon, transposed from the Sun glints slot.
+        breath = (1 - math.cos(time * math.pi / 3)) / 2
+        core = _moon_white_step(.72 + .28 * breath)
+        halo = _moon_white_step(.18 + .66 * breath)
+        frame[8] = core[:]
+        frame[9] = core[:]
+        if breath > .16:
+            frame[7] = halo[:]
+            frame[10] = halo[:]
+        return
+
+    # Lunar bloom keeps Solar bloom's centred expansion and contraction.
+    bloom = (1 - math.cos(time * math.pi / 4)) / 2
+    radius = 1.2 + 6.6 * bloom
+    for index in range(LED_COUNT):
+        distance = abs(index - 8)
+        field = smooth(radius + 1.25, radius - 1.15, distance)
+        if field > .12:
+            frame[index] = _moon_white_step(.35 + .65 * field)[:]
 
 
 def _rain(frame, variant, time):
@@ -268,15 +293,133 @@ def _cloud(frame, variant, time):
             shadow(21-(time-4)*3.75,envelope)
 
 
+def _night_cloud_point(frame, index, intensity):
+    if 0 <= index < LED_COUNT:
+        frame[index] = (NIGHT if intensity < .2 else NIGHT_CLOUD)[:]
+
+
+def _night_cloud_cluster(frame, centre, width, levels):
+    left = math.floor(centre - (width - 1) / 2 + .5)
+    for offset in range(width):
+        _night_cloud_point(frame, left + offset, levels[offset])
+
+
+def _night_crossing_clouds(frame, time):
+    age = time % 4.4
+    envelope = min(1, age / .45, (4.4 - age) / .45)
+    _night_cloud_cluster(frame, 1 + age * 3.5, 2, (.74 * envelope, .9 * envelope))
+    _night_cloud_cluster(frame, 15 - age * 3.5, 2, (.95 * envelope, .68 * envelope))
+
+
+def _night_cross_and_gather(frame, time):
+    time *= 11 / CLOUD_CROSS_GATHER_SECONDS
+    _night_crossing_clouds(frame, time)
+    if time < 3.3:
+        progress = max(0, (time - 1.45) / 1.85)
+        if progress:
+            _night_cloud_cluster(frame, 2 + progress * 6, 2, (.61, .85))
+            _night_cloud_cluster(frame, 14 - progress * 6, 2, (.84, .64))
+        return
+    age = time - 3.3
+    centre = 8 + 3.2 * math.sin(age * 1.06)
+    accent = 0
+    for at, side in ((.9, -1), (2.3, 1), (3.75, -1), (5.1, 1), (6.5, -1)):
+        arrival = age - at
+        if 0 <= arrival < 1.05:
+            start = centre + side * 4.6
+            position = start + (centre - start) * min(1, arrival / 1.05)
+            _night_cloud_point(
+                frame, math.floor(position + .5),
+                .65 + .22 * math.sin(math.pi * arrival / 1.05),
+            )
+            if arrival > .79:
+                accent = .18
+    _night_cloud_cluster(frame, centre, 3, (.71 + accent, .96, .76 + accent))
+
+
+def _night_slow_convergence(frame, time):
+    if time < 2:
+        _night_cloud_point(frame, math.floor(2 + time * 2.25 + .5), .76)
+        _night_cloud_point(frame, math.floor(14 - time * 2.25 + .5), .93)
+        return
+    if time < 15:
+        growth = (time - 2) / (13 / 7)
+        width = min(8, 2 + math.floor(growth))
+        centre = 8 + .5 * math.sin(time * .4)
+        levels = [min(.94, .64 + .28 * (1 - abs(i - (width - 1) / 2) / 5)
+                      + .035 * math.sin(time * 1.3 + i)) for i in range(width)]
+        _night_cloud_cluster(frame, centre, width, levels)
+        if width < 8:
+            progress = growth % 1
+            side = -1 if math.floor(growth) % 2 else 1
+            start = centre + side * 7
+            destination = centre + side * (width / 2 + .5)
+            position = start + (destination - start) * min(1, progress / .94)
+            _night_cloud_point(frame, math.floor(position + .5), .72 * smooth(0, .2, progress))
+        return
+    if time < 25:
+        centre = 8 - (time - 15) * .45
+    elif time < 39:
+        centre = 3.5 + (time - 25) * (9 / 14)
+    else:
+        centre = 12.5 + (time - 39)
+    levels = [.67 + .25 * (1 - abs(i - 3.5) / 4)
+              + .035 * math.sin(time * .68 + i * .75) for i in range(8)]
+    _night_cloud_cluster(frame, centre, 8, levels)
+
+
+def _cloud_night(frame, variant, time):
+    """Night palette with the unchanged four cloudy choreographies."""
+    if variant == 2:
+        _night_base(frame)
+        _night_cross_and_gather(frame, time)
+        return
+    if variant == 3:
+        _night_base(frame)
+        _night_slow_convergence(frame, time)
+        return
+
+    for index in range(LED_COUNT):
+        frame[index] = NIGHT_CLOUD[:]
+
+    def shadow(centre, power=1):
+        for index in range(LED_COUNT):
+            dip = math.exp(-((index - centre) / 3.1) ** 2) * power
+            if dip > .12:
+                frame[index] = (NIGHT if dip > .55 else NIGHT_CLOUD)[:]
+
+    if variant == 0:
+        shadow(-5 + time * 3.25)
+    elif variant == 1:
+        if .2 <= time < 3.65:
+            shadow(-4 + (time - .2) * 4.2, smooth(.2, .7, time) * (1 - smooth(3.15, 3.65, time)))
+        if 4 <= time < 7.8:
+            shadow(21 - (time - 4) * 3.75, smooth(4, 4.55, time) * (1 - smooth(7.25, 7.8, time)))
+
+
 def _partly_cloudy(frame, variant, time, night):
     opening = smooth(.75,2.35,time)*(1-smooth(4.7,6.75,time))
+    if night:
+        _night_base(frame)
+        for index in range(LED_COUNT):
+            cloud = (.62 + .04 * math.sin(index * .38 + time * .42)
+                     + .025 * math.cos(index * .83 - time * .27))
+            cloud *= 1 - opening if variant == 1 else 1
+            if cloud > .1:
+                frame[index] = NIGHT_CLOUD[:]
+        for index in range(LED_COUNT):
+            distance = abs(index - 8)
+            signal = opening * math.exp(-(distance / (1.2 + 2.3 * opening)) ** 2)
+            if signal >= .28:
+                frame[index] = _moon_white_step(.55 + .45 * signal)[:]
+        return
+
     # Variant 0 retains the original cloud-and-light scene. In variant 1 the
     # same neutral-white cloud field fades all the way to black as the light
     # opens. Never substitute dark brown/blue for a dimmed cloud: those hues
     # are amplified unpredictably by the Steam Machine's diffuser.
     for index in range(LED_COUNT):
-        white = (72 if night else 117)+(4 if night else 6)*math.sin(index*.38+time*.42) \
-            +(2 if night else 3)*math.cos(index*.83-time*.27)
+        white = 117 + 6*math.sin(index*.38+time*.42) + 3*math.cos(index*.83-time*.27)
         level = clamp(white*(1-opening if variant == 1 else 1))
         frame[index] = [level]*3
 
@@ -285,7 +428,7 @@ def _partly_cloudy(frame, variant, time, night):
     # remain neutral cloud (or black in the fade-out variant) instead.
     # Keep red and green almost equal: an amber red-heavy edge reads as red
     # once global Weather brightness and the physical diffuser are involved.
-    colour = [235,229,185] if night else [250,246,45]
+    colour = [250,246,45]
     for index in range(LED_COUNT):
         distance = abs(index-8)
         signal = opening*math.exp(-(distance/(1.2+2.3*opening))**2)
@@ -361,6 +504,8 @@ def weather_sequence(condition, variant, time):
         frame = _rain(frame,variant,time)
     elif condition == "cloud":
         _cloud(frame,variant,time)
+    elif condition == "cloud_night":
+        _cloud_night(frame,variant,time)
     elif condition in ("breaks","breaks_night"):
         _partly_cloudy(frame,variant,time,condition == "breaks_night")
     elif condition == "snow":

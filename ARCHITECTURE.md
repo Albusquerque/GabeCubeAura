@@ -12,7 +12,8 @@
   `CountdownProvider` owns independent parental/free/preview deadlines,
   `EventProvider` owns short queued animations and recording state,
   `ControllerProvider` owns controller inventory, battery thresholds and
-  optional gauges, and `IdleProvider` deliberately emits no frame (Vanilla).
+  optional gauges, `ScreenSyncProvider` owns the newest derived Gamescope
+  colours, and `IdleProvider` deliberately emits no frame (Vanilla).
 - **Display routing** selects one permanent provider independently for Home and
   in-game contexts, with an optional AppID override. Game launches, Playtime,
   Light events and Controller alerts are temporary layers; they do not change
@@ -28,7 +29,7 @@
   its immediate neighbours black to reduce optical bleed through the diffuser;
   this isolation is enabled by default.
   Low-battery animations outrank ordinary short events. The controller gauge,
-  Weather, Artwork, Performance, or Steam/default is the routed permanent
+  Weather, Artwork, Performance, Screen Sync, or Steam/default is the routed permanent
   display for a context and never displaces a temporary layer.
 - **Renderer** is the only production component holding the hardware adapter.
   It validates exactly 17 RGB pixels, serializes access, coalesces identical
@@ -118,6 +119,36 @@ position are stored per AppID. Games without a profile use the global default
 and never inherit the previously running game's custom Artwork choices. The
 Library Logo is not sampled because it is a transparent overlay rather than a
 complete backdrop.
+
+## Screen Sync flow
+
+`ScreenCaptureService` discovers the current Gamescope video source from the
+user PipeWire graph. It starts a GStreamer child process only while Screen Sync
+is the effective display for a running game. The process requests fixed 34 by
+18 BGRx frames at 10 Hz and writes them to stdout through a one-frame leaky
+queue. No screen pixels are saved, logged or returned to the frontend.
+
+The service checks the PipeWire graph before capture and periodically while it
+runs. An existing consumer prevents startup. A second consumer appearing later
+stops capture. This conservative policy protects recording and screen sharing
+until safe multi-consumer behaviour is proven on the official Steam Machine.
+Missing tools, a vanished Gamescope source, a stalled stream or a frame older
+than one second produces no provider frame. The child process is terminated and
+retried with bounded backoff.
+
+`ScreenSyncProcessor` decodes the tiny raw image, waits for three consistent
+frames before cropping top and bottom black bars, converts samples to linear
+RGB, removes the brightest five percent to reduce HUD influence and calculates
+either 17 horizontal Panorama zones or one Ambient colour. It then applies the
+dark threshold, brightness, optional saturation gain, horizontal diffuser blur
+and asymmetric temporal smoothing. Three consistently black frames force an
+exact black result. The final frame passes through the same exact 17-pixel
+validation as every other provider.
+
+Screen Sync is a permanent in-game display. It stays below countdowns, Game
+Launches, Light Events and controller alerts, remains subject to Vanilla Guard,
+and has its own StripMine priority. The renderer remains the only component
+that writes the light bar.
 
 ## Performance layouts and orientation
 

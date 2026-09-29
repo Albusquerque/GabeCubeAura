@@ -11,13 +11,14 @@ import threading
 import time
 
 from signalbar import __version__
+from signalbar.activation import ScreenSyncActivation
 from signalbar.arbiter import Arbiter, VanillaGuard
 from signalbar.hardware import ValveLedHardware
 from signalbar.integration import LightEventLease, StripMineClaimReader
 from signalbar.models import GameState
 from signalbar.providers import (
     ArtworkProvider, CountdownProvider, CustomizationProvider, EventProvider, IdleProvider,
-    LaunchArtworkProvider, PerformanceProvider,
+    LaunchArtworkProvider, PerformanceProvider, ScreenSyncProvider,
 )
 from signalbar.providers.controller import ControllerProvider
 from signalbar.providers.weather import WeatherProvider
@@ -41,6 +42,8 @@ class Engine:
         self.customization = CustomizationProvider()
         self.countdown = CountdownProvider()
         self.performance = PerformanceProvider()
+        self.screen_sync = ScreenSyncProvider()
+        self.screen_sync_activation = ScreenSyncActivation()
         self.events = EventProvider()
         self.events.set_variants(settings.all())
         self.controllers = ControllerProvider()
@@ -60,6 +63,10 @@ class Engine:
         self._artwork_identity = None
         self._steam_active_until = 0.0
         self._steam_reason = ""
+        self._launch_handoff_until = 0.0
+        self._last_recovery_at = 0.0
+        self._last_recovery_reason = ""
+        self._guard_was_allowed = False
         self._renderer = None
         self._guard = None
         self._decision = "none"
@@ -78,6 +85,9 @@ class Engine:
             "controller_last_update_at": 0.0,
             "controller_telemetry": {"phase": "starting", "hooks": 0, "queries": 0,
                                      "events": 0, "raw_count": 0, "query_ms": None, "error": ""},
+            "frontend_heartbeat_at": 0.0,
+            "game_session_state": "startup",
+            "game_retained_count": 0,
         }
 
     def _info(self, message):
@@ -103,6 +113,8 @@ class Engine:
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout=2.0)
+        self.screen_sync.stop()
+        self.screen_sync_activation.stop_preview()
         with self._lock:
             self.events.clear_transients()
             self.launch_artwork.cancel()
@@ -130,12 +142,14 @@ class Engine:
                 self.countdown.stop("parental")
                 self.events.clear_recording()
                 self.launch_artwork.cancel()
+                self._launch_handoff_until = 0.0
             if changed or not self._game.running:
                 self.artwork.clear()
                 self.launch_palette.clear()
                 self._artwork_identity = None
             self.controllers.cancel_for_settings(self.settings.all(), self._game.running)
             if changed and self._game.running and bool(launch):
+                self._launch_handoff_until = time.monotonic() + 1.0
                 self._refresh_launch_palettes(self._game.appid)
                 self.launch_artwork.arm(self._game.appid)
 
@@ -200,11 +214,22 @@ class Engine:
         with self._lock:
             if active:
                 # Lease prevents a vanished frontend from suspending forever.
-                self._steam_active_until = time.monotonic() + 3.0
+                self._steam_active_until = time.monotonic() + 6.0
                 self._steam_reason = str(reason or "Steam event")
             else:
                 self._steam_active_until = 0.0
                 self._steam_reason = ""
+
+    def set_screen_sync_context(self, context, active, state="available", detail=""):
+        if str(context or "") != "steam-screensaver":
+            return False
+        self.screen_sync_activation.set_screensaver(active, state, detail)
+        return True
+
+    def preview_screen_sync(self, seconds=15.0):
+        if not self.settings.all()["signalbar_enabled"]:
+            return False
+        return self.screen_sync_activation.preview(seconds)
 
     def report_runtime_diagnostic(self, event, appid=0, source="", duration_ms=-1):
         """Record frontend lifecycle timings without affecting provider policy."""
@@ -221,6 +246,8 @@ class Engine:
                     "appid": appid,
                     "game_detection_source": str(source or "unknown")[:48],
                     "game_sync_ms": duration_ms,
+                    "frontend_heartbeat_at": now,
+                    "game_session_state": str(source or "unknown")[:64],
                     "parental_callback_state": (
                         "waiting" if appid > 0 and self.settings.all()["parental_countdown_enabled"]
                         else "disabled" if appid > 0 else "idle"
@@ -233,6 +260,14 @@ class Engine:
                     "parental_callback_state": "received",
                     "parental_callback_delay_ms": duration_ms,
                     "parental_wait_started_at": 0.0,
+                })
+            elif event == "heartbeat":
+                self._runtime_debug["frontend_heartbeat_at"] = now
+            elif event == "game_retained":
+                self._runtime_debug.update({
+                    "frontend_heartbeat_at": now,
+                    "game_session_state": str(source or "retained")[:64],
+                    "game_retained_count": self._runtime_debug["game_retained_count"] + 1,
                 })
 
     def report_parental_minutes(self, minutes):
@@ -288,6 +323,10 @@ class Engine:
     def trigger_event(self, kind, preview=False, variant=""):
         values = self.settings.all()
         kind = str(kind or "")
+        if not preview and kind in {"record-start", "record-stop"}:
+            # Capture safety follows recording even when its optional visual
+            # event or persistent marker is disabled.
+            self.events.set_recording(kind == "record-start")
         if values["mode"] == "disabled":
             return False
         if self.controllers.event_output().provider == "controller:low":
@@ -454,8 +493,6 @@ class Engine:
         with self._lock:
             running = self._game.running
         self.controllers.cancel_for_settings(values, running)
-        if not values["events_enabled"] or not values["event_recording_enabled"]:
-            self.events.clear_recording()
         if not values["events_enabled"]:
             self.events.clear_transients()
         elif values["mode"] == "disabled":
@@ -499,6 +536,8 @@ class Engine:
             return "artwork"
         if provider.startswith("performance"):
             return "performance"
+        if provider.startswith("screen-sync"):
+            return "screen_sync"
         if provider.startswith("customization"):
             return "customization"
         if provider.startswith("weather"):
@@ -518,6 +557,23 @@ class Engine:
             # Countdowns and unknown safety providers keep GabeCubeAura priority.
             return "signalbar"
         return values.get(f"stripmine_priority_{family}", "stripmine")
+
+    @staticmethod
+    def _screen_sync_should_run(values, requested, signal_critical,
+                                guard_allows, stripmine_active, recording=False,
+                                steam_priority=False):
+        return (
+            values["signalbar_enabled"]
+            and requested
+            and not signal_critical
+            and not recording
+            and not steam_priority
+            and (guard_allows or stripmine_active)
+            and (
+                not stripmine_active
+                or values["stripmine_priority_screen_sync"] == "signalbar"
+            )
+        )
 
     def _run(self):
         hardware = None
@@ -595,6 +651,11 @@ class Engine:
                     explicit_active=explicit,
                     explicit_reason=explicit_reason,
                 )
+                recovering_ownership = bool(
+                    allowed and not self._guard_was_allowed and guard.last_external_at
+                )
+                self._guard_was_allowed = allowed
+                steam_priority = bool(explicit or guard.hard_priority)
                 stripmine_active = (
                     values["stripmine_integration_enabled"]
                     and self.stripmine_claim.active()
@@ -629,6 +690,24 @@ class Engine:
                 signal_critical = (
                     countdown_state["active"] and countdown_state["remaining_seconds"] <= 300
                 )
+                game_screen_sync = (
+                    values["mode"] == "screen_sync"
+                    and current_display == "screen_sync"
+                    and game.running
+                )
+                activation_reason = self.screen_sync_activation.resolve(
+                    game_route=game_screen_sync,
+                    screensaver_enabled=values["screen_sync_screensaver_enabled"],
+                    enabled=values["signalbar_enabled"],
+                )
+                screen_sync_requested = bool(activation_reason)
+                recording = self.events.recording
+                screen_sync_active = self._screen_sync_should_run(
+                    values, screen_sync_requested, signal_critical, allowed,
+                    stripmine_active, recording, steam_priority,
+                )
+                self.screen_sync.set_active(screen_sync_active)
+                screen_sync_base = self.screen_sync.output(values)
                 if signal_critical:
                     self.events.clear_transients()
                     self.controllers.clear_transients()
@@ -640,9 +719,21 @@ class Engine:
                 controller_event = self.controllers.event_output()
                 controller_base = self.controllers.persistent_output(provider_values, game.running)
                 weather_base = self.weather.output(provider_values, game.running, now)
+                screen_sync_ownership_allowed = (
+                    not stripmine_active
+                    or values["stripmine_priority_screen_sync"] == "signalbar"
+                )
+                screen_sync_fallback_active = (
+                    screen_sync_requested
+                    and screen_sync_ownership_allowed
+                    and screen_sync_base.frame is None
+                )
                 customization_base = self.customization.output(
                     values,
-                    enabled=(current_display == "customization" and values["mode"] != "disabled"),
+                    enabled=(
+                        current_display == "customization" and values["mode"] != "disabled"
+                        or screen_sync_fallback_active
+                    ),
                 )
                 brief_alert = any(output is not None and output.frame is not None for output in (
                     event, controller_event,
@@ -657,13 +748,15 @@ class Engine:
                 )
                 if self.launch_artwork.active and (
                     signal_critical or not launch_display_allowed or not launch_ownership_allowed
-                    or not (allowed or stripmine_active)
+                    or steam_priority or not (allowed or stripmine_active)
                 ):
                     self.launch_artwork.cancel()
                 launch_artwork = self.launch_artwork.output(
                     game.appid,
                     allow_start=(
-                        launch_display_allowed and not signal_critical and not brief_alert
+                        launch_display_allowed and now >= self._launch_handoff_until
+                        and not signal_critical and not brief_alert
+                        and not steam_priority
                         and (allowed or stripmine_active) and launch_ownership_allowed
                     ),
                     paused=brief_alert,
@@ -674,13 +767,18 @@ class Engine:
                 interval = 0.06 if any(output.frame is not None for output in (
                     event, controller_event, launch_artwork, customization_base,
                 )) else 0.10
+                effective_mode = "screen_sync" if screen_sync_requested else values["mode"]
                 decision = self.arbiter.choose(
-                    mode=values["mode"], guard_allows=allowed or stripmine_active, game=game,
+                    mode=effective_mode, guard_allows=allowed or stripmine_active, game=game,
                     performance=performance, artwork=artwork, idle=self.idle.output(),
                     signal=signal, event=event, signal_critical=signal_critical,
                     controller_event=controller_event, controller_base=controller_base,
                     weather_base=weather_base,
                     customization_base=customization_base,
+                    screen_sync_base=screen_sync_base,
+                    screen_sync_fallback=(
+                        customization_base if screen_sync_fallback_active else None
+                    ),
                     launch_artwork=launch_artwork,
                     recording_marker=(
                         self.events.recording and values["events_enabled"]
@@ -688,11 +786,16 @@ class Engine:
                     ),
                     recording_marker_isolation=values["recording_marker_isolation"],
                     performance_always=values["performance_always"],
+                    steam_priority=steam_priority,
                 )
 
                 stripmine_priority = self._stripmine_priority(decision.provider, values)
-                yield_to_stripmine = stripmine_active and stripmine_priority == "stripmine"
-                take_from_stripmine = stripmine_active and stripmine_priority == "signalbar"
+                yield_to_stripmine = (
+                    stripmine_active and not steam_priority and stripmine_priority == "stripmine"
+                )
+                take_from_stripmine = (
+                    stripmine_active and not steam_priority and stripmine_priority == "signalbar"
+                )
                 if stripmine_active and not yield_to_stripmine:
                     self.stripmine_claim.acknowledge(stripmine_priority, decision.provider)
 
@@ -744,8 +847,16 @@ class Engine:
                     wrote = renderer.render(decision.frame)
                     if wrote:
                         guard.note_own_write(renderer.last_signature)
+                        if recovering_ownership:
+                            self._last_recovery_at = now
+                            self._last_recovery_reason = "GabeCubeAura ownership restored"
                     owner = "GabeCubeAura"
-                    suspension = ""
+                    suspension = (
+                        "Screen Sync paused; Customization+ fallback active"
+                        if effective_mode == "screen_sync"
+                        and decision.provider.startswith("customization")
+                        else ""
+                    )
                     event_was_active = is_event
                 else:
                     externally_blocked = decision.provider == "valve"
@@ -781,6 +892,7 @@ class Engine:
                     self._suspension_reason = suspension
                     self._error = ""
             except Exception as error:
+                self.screen_sync.set_active(False)
                 renderer.relinquish(restore_if_owned=False)
                 self.event_lease.release()
                 self.stripmine_claim.release()
@@ -795,6 +907,7 @@ class Engine:
 
         if renderer is not None:
             renderer.relinquish(restore_if_owned=True)
+        self.screen_sync.set_active(False)
         self.stripmine_claim.release()
 
     def status(self):
@@ -838,15 +951,21 @@ class Engine:
                 "reason": "not initialized",
                 "cooldown_remaining": 0.0,
                 "stable_remaining": 0.0,
+                "hard_priority": False,
+                "hard_reason": "",
             }
             runtime_debug = dict(self._runtime_debug)
             wait_started = runtime_debug.pop("parental_wait_started_at", 0.0)
             controller_last_update_at = runtime_debug.pop("controller_last_update_at", 0.0)
+            frontend_heartbeat_at = runtime_debug.pop("frontend_heartbeat_at", 0.0)
             runtime_debug["controller_last_update_age_s"] = (
                 max(0.0, now - controller_last_update_at) if controller_last_update_at else None
             )
             runtime_debug["parental_wait_s"] = (
                 max(0.0, now - wait_started) if wait_started else None
+            )
+            runtime_debug["frontend_heartbeat_age_s"] = (
+                max(0.0, now - frontend_heartbeat_at) if frontend_heartbeat_at else None
             )
             logical_performance = self.performance.frame(
                 metric=values["performance_metric"],
@@ -877,6 +996,36 @@ class Engine:
             controller_status = self.controllers.status(status_values, self._game.running)
             weather_status = self.weather.status(status_values, self._game.running)
             customization_status = self.customization.status(values)
+            screen_sync_status = self.screen_sync.status()
+            game_screen_sync = (
+                values["mode"] == "screen_sync"
+                and display["selected"] == "screen_sync"
+                and self._game.running
+            )
+            activation_status = self.screen_sync_activation.status(
+                game_route=game_screen_sync,
+                screensaver_enabled=values["screen_sync_screensaver_enabled"],
+                enabled=values["signalbar_enabled"],
+            )
+            fallback_active = bool(
+                activation_status["requested"]
+                and self._decision.startswith("customization")
+            )
+            if self.events.recording:
+                fallback_reason = "Steam Game Recording"
+            elif screen_sync_status["phase"] == "conflict":
+                fallback_reason = "Another Gamescope capture consumer"
+            elif screen_sync_status["phase"] == "error":
+                fallback_reason = screen_sync_status["error"] or "Capture unavailable"
+            elif fallback_active:
+                fallback_reason = "Waiting for a fresh Screen Sync frame"
+            else:
+                fallback_reason = ""
+            screen_sync_status.update({
+                "activation": activation_status,
+                "fallback_active": fallback_active,
+                "fallback_reason": fallback_reason,
+            })
             return {
                 "version": __version__,
                 "available": self._available,
@@ -922,6 +1071,13 @@ class Engine:
                 "customization_brightness": values["customization_brightness"],
                 "customization_speed": values["customization_speed"],
                 "customization_direction": values["customization_direction"],
+                "screen_sync_style": values["screen_sync_style"],
+                "screen_sync_brightness": values["screen_sync_brightness"],
+                "screen_sync_reactivity": values["screen_sync_reactivity"],
+                "screen_sync_colour_intensity": values["screen_sync_colour_intensity"],
+                "screen_sync_black_threshold": values["screen_sync_black_threshold"],
+                "screen_sync_ignore_black_bars": values["screen_sync_ignore_black_bars"],
+                "screen_sync_screensaver_enabled": values["screen_sync_screensaver_enabled"],
                 "cool_temp_c": values["cool_temp_c"],
                 "hot_temp_c": values["hot_temp_c"],
                 "reverse_led_order": values["reverse_led_order"],
@@ -973,9 +1129,11 @@ class Engine:
                 "stripmine_priority_light_events": values["stripmine_priority_light_events"],
                 "stripmine_priority_game_launches": values["stripmine_priority_game_launches"],
                 "stripmine_priority_customization": values["stripmine_priority_customization"],
+                "stripmine_priority_screen_sync": values["stripmine_priority_screen_sync"],
                 **{key: values[key] for key in values if key.startswith("weather_") and key.endswith("_variant")},
                 "weather": weather_status,
                 "customization": customization_status,
+                "screen_sync": screen_sync_status,
                 "controllers": controller_status,
                 "events": self.events.status(),
                 "game": {"appid": self._game.appid, "title": self._game.title},
@@ -1003,6 +1161,15 @@ class Engine:
                     "stable_remaining": guard_debug["stable_remaining"],
                     "guard_state": "ready" if guard_debug["ready"] else "blocked",
                     "guard_reason": guard_debug["reason"],
+                    "steam_priority": guard_debug["hard_priority"],
+                    "steam_priority_reason": guard_debug["hard_reason"],
+                    "steam_lease_remaining_s": max(0.0, self._steam_active_until - now),
+                    "launch_handoff_remaining_s": max(0.0, self._launch_handoff_until - now),
+                    "last_recovery_age_s": (
+                        max(0.0, now - self._last_recovery_at)
+                        if self._last_recovery_at else None
+                    ),
+                    "last_recovery_reason": self._last_recovery_reason,
                     "reverse_led_order": values["reverse_led_order"],
                     **runtime_debug,
                 },

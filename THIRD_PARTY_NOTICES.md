@@ -11,3 +11,8 @@ decorative effects, curated palettes, or runtime architecture.
 The optional local-weather feature retrieves city matches and current conditions
 from [Open-Meteo](https://open-meteo.com/). Weather data is attributed to
 Open-Meteo. No Open-Meteo API key or automatic location detection is used.
+
+Screen Sync launches the GStreamer and PipeWire command-line tools supplied by
+SteamOS. Those tools and libraries are not copied into or redistributed with
+the GabeCubeAura archive. Screen colour processing in this project is an original
+implementation and does not copy OpenRGB Effects Plugin source code.

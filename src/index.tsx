@@ -30,6 +30,7 @@ import {
   previewCountdown,
   previewCustomization,
   previewLaunchArtwork,
+  previewScreenSync,
   previewController,
   previewWeather,
   prepareUpdate,
@@ -72,6 +73,7 @@ const GAME_DISPLAY_OPTIONS: { data: GameDisplay; label: string }[] = [
   { data: "customization", label: "Customization+" },
   { data: "artwork", label: "Artwork" },
   { data: "performance", label: "Performance" },
+  { data: "screen_sync", label: "Screen Sync" },
   { data: "weather", label: "Weather" },
   { data: "controller", label: "Controller status" },
 ];
@@ -123,6 +125,19 @@ const SMOOTHING_OPTIONS = [
   { data: "responsive", label: "Responsive" },
   { data: "balanced", label: "Balanced" },
   { data: "smooth", label: "Smooth" },
+];
+const SCREEN_SYNC_STYLE_OPTIONS = [
+  { data: "panorama", label: "Panorama (17 screen zones)" },
+  { data: "ambient", label: "Ambient (one screen colour)" },
+];
+const SCREEN_SYNC_REACTIVITY_OPTIONS = [
+  { data: "calm", label: "Calm" },
+  { data: "balanced", label: "Balanced" },
+  { data: "fast", label: "Fast" },
+];
+const SCREEN_SYNC_COLOUR_OPTIONS = [
+  { data: "natural", label: "Natural" },
+  { data: "vivid", label: "Vivid" },
 ];
 
 const PALETTE_OPTIONS = [
@@ -862,6 +877,112 @@ function CustomizationPanel({ status, setStatus }: { status: Status; setStatus: 
   </PanelSection>;
 }
 
+function ScreenSyncPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
+  const activation = status.screen_sync.activation;
+  const activationLabel = activation.reason === "manual-preview"
+    ? `Manual preview (${Math.ceil(activation.preview_remaining_s)} s remaining)`
+    : activation.reason === "steam-screensaver"
+      ? "Following Steam screensaver"
+      : activation.reason === "game-route"
+        ? "Following the current game"
+        : activation.screensaver_detection === "unavailable"
+          ? "Steam screensaver detection unavailable"
+          : activation.screensaver_detection === "error"
+            ? `Steam screensaver detection error: ${activation.screensaver_detail}`
+            : "Waiting for an activation context";
+  const phase = status.screen_sync.fallback_active
+    ? `Using Customization+: ${status.screen_sync.fallback_reason}`
+    : status.screen_sync.phase === "capturing"
+    ? `Capturing ${status.screen_sync.frames_per_second.toFixed(1)} frames/s`
+    : status.screen_sync.phase === "conflict"
+      ? "Paused because another app is capturing Gamescope"
+      : status.screen_sync.phase === "error"
+        ? `Unavailable: ${status.screen_sync.error}`
+        : status.current_display === "screen_sync" && status.game.appid > 0
+          ? "Waiting for safe LED ownership"
+          : "Select Screen Sync as the in-game display or for the current game";
+  return <>
+    <PanelSection title="Screen Sync">
+      <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .82 }}>
+        Matches the visible Gamescope picture to the 17-pixel light bar. Frames stay in memory and are never saved or sent over the network.
+      </div></PanelSectionRow>
+      <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .78 }}>
+        <div>{phase}</div>
+        {status.screen_sync.node_name ? <div>Source: {status.screen_sync.node_name}</div> : null}
+        {status.screen_sync.crop_top || status.screen_sync.crop_bottom
+          ? <div>Ignored black bars: {status.screen_sync.crop_top} top, {status.screen_sync.crop_bottom} bottom</div>
+          : null}
+        <PalettePreview colors={status.screen_sync.colors} />
+      </div></PanelSectionRow>
+    </PanelSection>
+    <PanelSection title="Activation">
+      <PanelSectionRow><ToggleField
+        label="Use during Steam screensaver"
+        description="Temporarily follows the colours shown by Steam's screensaver. Your Home and in-game displays return when it closes."
+        checked={status.screen_sync_screensaver_enabled}
+        onChange={async (value) => setStatus(await setSetting("screen_sync_screensaver_enabled", value))} />
+      </PanelSectionRow>
+      <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .78 }}>
+        <div>{activationLabel}</div>
+        <div>In-game default: {displayLabel(status.game_display)}</div>
+        {status.display_override !== "inherit" && status.game.appid > 0
+          ? <div>Current game override: {displayLabel(status.display_override)}</div>
+          : null}
+      </div></PanelSectionRow>
+      <PanelSectionRow><ButtonItem
+        label="Preview Screen Sync"
+        description="Uses the real capture and rendering path for 15 seconds without changing Display routing."
+        onClick={() => void previewScreenSync().then(setStatus).catch(console.warn)}>
+        Preview for 15 seconds
+      </ButtonItem></PanelSectionRow>
+    </PanelSection>
+    <PanelSection title="Screen mapping">
+      <PanelSectionRow><DropdownItem label="Style" rgOptions={SCREEN_SYNC_STYLE_OPTIONS}
+        selectedOption={status.screen_sync_style}
+        onChange={async (option) => setStatus(await setSetting("screen_sync_style", String(option.data)))} /></PanelSectionRow>
+      <PanelSectionRow><DropdownItem label="Reactivity" rgOptions={SCREEN_SYNC_REACTIVITY_OPTIONS}
+        selectedOption={status.screen_sync_reactivity}
+        onChange={async (option) => setStatus(await setSetting("screen_sync_reactivity", String(option.data)))} /></PanelSectionRow>
+      <PanelSectionRow><DropdownItem label="Colour intensity" rgOptions={SCREEN_SYNC_COLOUR_OPTIONS}
+        selectedOption={status.screen_sync_colour_intensity}
+        onChange={async (option) => setStatus(await setSetting("screen_sync_colour_intensity", String(option.data)))} /></PanelSectionRow>
+      <PanelSectionRow><SliderField label="Brightness"
+        description="34 is the minimum retained because lower values switch the physical light bar off."
+        value={status.screen_sync_brightness} min={34} max={255} step={1} showValue valueSuffix=" / 255"
+        onChange={async (value) => setStatus(await setSetting("screen_sync_brightness", value))} /></PanelSectionRow>
+      <PanelSectionRow><ToggleField label="Ignore cinematic black bars"
+        description="Applies a crop only after the same top and bottom bars are detected in three consecutive frames."
+        checked={status.screen_sync_ignore_black_bars}
+        onChange={async (value) => setStatus(await setSetting("screen_sync_ignore_black_bars", value))} /></PanelSectionRow>
+      <PanelSectionRow><SliderField label="Black threshold"
+        description="Pixels at or below this brightness are treated as fully off."
+        value={status.screen_sync_black_threshold} min={0} max={32} step={1} showValue
+        onChange={async (value) => setStatus(await setSetting("screen_sync_black_threshold", value))} /></PanelSectionRow>
+    </PanelSection>
+    <PanelSection title="Capture fallback">
+      <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .76 }}>
+        When Screen Sync pauses for Steam Game Recording or another capture consumer, Customization+ takes over automatically. The centre LED remains red while recording.
+      </div></PanelSectionRow>
+      {status.screen_sync.fallback_active ? <PanelSectionRow><div style={{ fontSize: ".78em" }}>
+        Active: {status.screen_sync.fallback_reason}
+      </div></PanelSectionRow> : null}
+    </PanelSection>
+    <PanelSection title="Capture safety">
+      <PanelSectionRow>
+        <div style={{ fontSize: ".76em", opacity: .74, paddingBottom: 8 }}>
+          Screen Sync uses the local Gamescope PipeWire video source at 34 by 18 pixels and 10 frames per second. If Steam Game Recording, screen sharing, or another Gamescope capture consumer is active, capture stops and the fallback is used instead of competing for the stream.
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow><ButtonItem
+        label="Refresh capture status"
+        description="Read the current Gamescope and PipeWire state and update the 17-colour preview."
+        onClick={() => void getStatus().then(setStatus).catch(console.warn)}>
+        Refresh
+      </ButtonItem></PanelSectionRow>
+    </PanelSection>
+  </>;
+}
+
 function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
   const priorities = ([
     ["Artwork", "stripmine_priority_artwork", "The sampled game artwork display."],
@@ -870,6 +991,7 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
     ["Controller displays", "stripmine_priority_controller", "Battery gauges, connection and charging displays."],
     ["Game launches", "stripmine_priority_game_launches", "Temporary animations using colours from the launched game's artwork."],
     ["Customization+", "stripmine_priority_customization", "The persistent user-authored display."],
+    ["Screen Sync", "stripmine_priority_screen_sync", "Live colours captured from the running game."],
     ["Light Events", "stripmine_priority_light_events", "Notifications, achievements, screenshots and recording cues."],
   ] as const);
   return <>
@@ -912,7 +1034,37 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
   </>;
 }
 
-type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "updates" | "advanced";
+type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "screen-sync" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "updates" | "advanced";
+
+const PAGE_END_LABELS: Record<Exclude<Page, "quick">, string> = {
+  routing: "Display routing",
+  customization: "Customization+",
+  artwork: "Artwork",
+  performance: "Performance",
+  "screen-sync": "Screen Sync",
+  launches: "Game launches",
+  countdown: "Playtime",
+  events: "Light events",
+  controllers: "Controllers",
+  weather: "Weather",
+  compatibility: "Compatibility",
+  updates: "Updates",
+  advanced: "Advanced",
+};
+
+function SettingsPageEnd({ page, setStatus }: {
+  page: Exclude<Page, "quick">;
+  setStatus: (next: Status) => void;
+}) {
+  return <PanelSection>
+    <PanelSectionRow><ButtonItem
+      label={`End of ${PAGE_END_LABELS[page]} settings`}
+      description="This final row keeps the complete page reachable with controller navigation."
+      onClick={() => void getStatus().then(setStatus).catch(console.warn)}>
+      Refresh status
+    </ButtonItem></PanelSectionRow>
+  </PanelSection>;
+}
 
 function Content({ page = "quick" }: { page?: Page }) {
   const [status, setStatusState] = useState<Status | null>(null);
@@ -942,7 +1094,8 @@ function Content({ page = "quick" }: { page?: Page }) {
     const timer = window.setInterval(() => {
       void getStatus().then((next) => alive && setStatus(next)).catch(() => undefined);
     }, page === "events" || page === "controllers" || page === "weather"
-      || page === "compatibility" || page === "launches" ? 100 : 1000);
+      || page === "compatibility" || page === "launches" ? 100
+      : page === "screen-sync" ? 250 : 1000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -1153,6 +1306,7 @@ function Content({ page = "quick" }: { page?: Page }) {
   };
   const performanceColors = performancePreview(status);
   const baseShownColors = status.provider.startsWith("launch-artwork:") ? status.launch_artwork.colors
+    : status.provider.startsWith("screen-sync") ? status.screen_sync.colors
     : status.provider.startsWith("customization:") ? status.customization.colors
     : status.provider.startsWith("event:") ? status.events.colors
     : status.provider.startsWith("controller:") || status.provider.startsWith("controller-") ? status.controllers.colors
@@ -1164,6 +1318,7 @@ function Content({ page = "quick" }: { page?: Page }) {
     ? addRecordingMarker(status, baseShownColors) : baseShownColors;
   const shownLabel = status.provider.startsWith("launch-artwork:")
     ? `Game launch · ${LAUNCH_ARTWORK_PATTERN_OPTIONS.find((item) => item.data === status.launch_artwork_pattern)?.label ?? status.launch_artwork_pattern}`
+    : status.provider.startsWith("screen-sync") ? "Screen Sync"
     : status.provider.startsWith("customization:") ? `Customization+ · ${customizationPatternLabel(status.customization_pattern)}`
     : status.provider.startsWith("event:") ? status.events.variant
     : status.provider.startsWith("controller:") ? `Controller · ${status.controllers.variant}`
@@ -1349,6 +1504,8 @@ function Content({ page = "quick" }: { page?: Page }) {
       </> : null}
 
       {showPage("customization") ? <CustomizationPanel status={status} setStatus={setStatus} /> : null}
+
+      {showPage("screen-sync") ? <ScreenSyncPanel status={status} setStatus={setStatus} /> : null}
 
       {showPage("artwork") ? <PanelSection title="Artwork display">
         <PanelSectionRow>
@@ -1761,8 +1918,31 @@ function Content({ page = "quick" }: { page?: Page }) {
                 </div>
                 <div>Last external LED change: {formatAge(status.debug.last_external_age_s)}</div>
                 <div>
+                  Steam priority: {status.debug.steam_priority
+                    ? status.debug.steam_priority_reason || "active"
+                    : "inactive"}
+                  {status.debug.steam_lease_remaining_s > 0
+                    ? ` · lease ${status.debug.steam_lease_remaining_s.toFixed(1)} s`
+                    : ""}
+                </div>
+                <div>
+                  Ownership recovery: {status.debug.last_recovery_age_s == null
+                    ? "none"
+                    : `${status.debug.last_recovery_reason} · ${formatAge(status.debug.last_recovery_age_s)}`}
+                </div>
+                {status.debug.launch_handoff_remaining_s > 0 ? <div>
+                  Waiting for Steam launch writes: {status.debug.launch_handoff_remaining_s.toFixed(1)} s
+                </div> : null}
+                <div>
                   Game detection: {status.debug.game_detection_source}
                   {status.debug.game_sync_ms == null ? "" : ` · backend ${Math.round(status.debug.game_sync_ms)} ms`}
+                </div>
+                <div>
+                  Session continuity: {status.debug.game_session_state}
+                  {` · retained ${status.debug.game_retained_count} time${status.debug.game_retained_count === 1 ? "" : "s"}`}
+                  {status.debug.frontend_heartbeat_age_s == null
+                    ? " · no frontend heartbeat"
+                    : ` · heartbeat ${formatAge(status.debug.frontend_heartbeat_age_s)}`}
                 </div>
                 <div>
                   Steam Families callback: {status.debug.parental_callback_state === "waiting"
@@ -1847,6 +2027,8 @@ function Content({ page = "quick" }: { page?: Page }) {
         </ButtonItem></PanelSectionRow>
       </PanelSection> : null}
 
+      {page !== "quick" ? <SettingsPageEnd page={page} setStatus={setStatus} /> : null}
+
     </>
   );
 }
@@ -1857,6 +2039,7 @@ function GabeCubeAuraSettings() {
     { title: "Customization+", route: "/gabecubeaura/settings/customization", content: <Content page="customization" /> },
     { title: "Artwork", route: "/gabecubeaura/settings/artwork", content: <Content page="artwork" /> },
     { title: "Performance", route: "/gabecubeaura/settings/performance", content: <Content page="performance" /> },
+    { title: "Screen Sync", route: "/gabecubeaura/settings/screen-sync", content: <Content page="screen-sync" /> },
     { title: "Game launches", route: "/gabecubeaura/settings/launches", content: <Content page="launches" /> },
     { title: "Playtime", route: "/gabecubeaura/settings/countdown", content: <Content page="countdown" /> },
     { title: "Light events", route: "/gabecubeaura/settings/events", content: <Content page="events" /> },

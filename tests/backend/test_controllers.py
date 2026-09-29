@@ -56,6 +56,10 @@ class ControllerTests(unittest.TestCase):
             engine = Engine(settings, str(Path(folder) / "artwork.json"), hardware_factory=lambda: hardware)
             engine.start()
             try:
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline and engine.status()["debug"]["guard_state"] != "ready":
+                    time.sleep(.01)
+                self.assertEqual(engine.status()["debug"]["guard_state"], "ready")
                 for appid in (0, 42):
                     with self.subTest(appid=appid):
                         engine.set_game(appid, "Test" if appid else "")

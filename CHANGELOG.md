@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0-beta1 - 2026-09-29
+
+- Merge the experimental Screen Sync engine into GabeCubeAura while
+  keeping the existing provider, arbiter and renderer pipeline as the only LED
+  writer.
+- Add real-time Panorama and Ambient screen colour mapping through a local
+  Gamescope PipeWire capture. Frames stay in memory and are never sent over the
+  network.
+- Add an independent Screen Sync activation controller for the selected game,
+  Steam's screensaver and a bounded 15-second manual preview.
+- Detect Steam's private screensaver service by capability and degrade safely
+  when the current Steam build does not expose it.
+- Keep a lifetime-confirmed AppID through transient menu, overlay and idle
+  `MainRunningApp` gaps so controller input is no longer required to restore
+  the selected in-game display.
+- Stop Screen Sync for Steam Game Recording and other Gamescope consumers, then
+  use the saved Customization+ effect as the automatic capture fallback.
+- Keep the persistent red centre marker over Customization+ for the complete
+  recording when recording Light Events are enabled.
+- Add Steam hard-priority leases for startup, downloads and repeated native LED
+  activity. GabeCubeAura events and previews do not write during those leases.
+- Renew download ownership while activity continues, delay Game Launches while
+  Steam launch writes settle and expose recovery, session and heartbeat
+  diagnostics.
+- Add 8 night-weather transpositions from the approved mockup: Breathing moon,
+  Lunar bloom, four night-cloud scenes, Moon through clouds and Moon, fading
+  clouds. Weather now offers 22 selectable loops.
+- Route cloudy live weather to separate day and night families while preserving
+  existing daytime selections. Fresh night-cloud settings use Night cross &
+  gather.
+- Expand Customization+ to 65 available effects after adding the four
+  night-cloud patterns, without renaming existing entries.
+- Retain the direct updater introduced in 1.1.0. Stable update checks continue
+  to ignore prereleases, and the beta never offers v1.1.0 as a downgrade.
+
 ## 1.1.0 - 2026-09-29
 
 - Add a dedicated Updates page with manual checks, daily background checks and

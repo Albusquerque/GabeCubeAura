@@ -16,6 +16,9 @@ class VanillaGuard:
         self._blocked_until = now + self.stable_s
         self._reason = "startup settle"
         self._external_at = 0.0
+        self._external_changes = []
+        self._hard_until = self._blocked_until
+        self._hard_reason = "startup settle"
 
     @property
     def reason(self):
@@ -25,24 +28,53 @@ class VanillaGuard:
     def last_external_at(self):
         return self._external_at
 
-    def block(self, reason: str):
+    @property
+    def hard_priority(self):
+        return self._clock() < self._hard_until
+
+    @property
+    def hard_reason(self):
+        return self._hard_reason if self.hard_priority else ""
+
+    def block(self, reason: str, hard=False):
         now = self._clock()
         self._reason = str(reason or "Steam/system activity")
         self._external_at = now
         self._last_change_at = now
         self._blocked_until = max(self._blocked_until, now + self.cooldown_s)
+        if hard:
+            self._hard_until = max(self._hard_until, now + self.cooldown_s)
+            self._hard_reason = self._reason
 
     def observe(self, signature, expected_signature=None, explicit_active=False, explicit_reason=""):
         now = self._clock()
         if explicit_active:
-            self.block(explicit_reason or "Steam/system activity")
+            self.block(explicit_reason or "Steam/system activity", hard=True)
 
         changed = self._last_observed is not None and signature != self._last_observed
         self._last_observed = signature
         if changed:
             self._last_change_at = now
-            if expected_signature is not None and signature != expected_signature:
-                self.block("external LED change detected")
+            external_window = max(8.0, self.cooldown_s * 2.0)
+            continuing_external = bool(
+                expected_signature is None
+                and self._external_changes
+                and now - self._external_changes[-1] <= external_window
+            )
+            if (
+                expected_signature is not None and signature != expected_signature
+                or continuing_external
+            ):
+                self._external_changes = [
+                    changed_at for changed_at in self._external_changes
+                    if now - changed_at <= external_window
+                ]
+                self._external_changes.append(now)
+                repeated = len(self._external_changes) >= 2
+                self.block(
+                    "repeated native LED activity" if repeated else "external LED change detected",
+                    hard=repeated,
+                )
 
         stable = now - self._last_change_at >= self.stable_s
         if now >= self._blocked_until and stable and not explicit_active:
@@ -72,6 +104,8 @@ class VanillaGuard:
             "reason": reason,
             "cooldown_remaining": cooldown_remaining,
             "stable_remaining": stable_remaining,
+            "hard_priority": self.hard_priority,
+            "hard_reason": self.hard_reason,
         }
 
 

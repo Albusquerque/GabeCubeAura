@@ -165,6 +165,14 @@ class Plugin:
         self.engine.set_steam_activity(active, reason)
         return True
 
+    async def set_screen_sync_context(self, context: str, active: bool,
+                                      state: str = "available", detail: str = ""):
+        return self.engine.set_screen_sync_context(context, active, state, detail)
+
+    async def preview_screen_sync(self):
+        self.engine.preview_screen_sync(15.0)
+        return self.engine.status()
+
     async def report_runtime_diagnostic(self, event: str, appid: int = 0,
                                         source: str = "", duration_ms: float = -1):
         self.engine.report_runtime_diagnostic(event, appid, source, duration_ms)

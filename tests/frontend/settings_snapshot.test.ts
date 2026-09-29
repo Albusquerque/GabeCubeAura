@@ -18,6 +18,11 @@ const sampleStatus = {
     customization_pattern: "steady", customization_colour_count: 2,
     customization_colour_1: [255, 200, 0], customization_colour_2: [0, 180, 255], customization_colour_3: [255, 0, 120],
     customization_brightness: 128, customization_speed: 50, customization_direction: "forward",
+    screen_sync_style: "panorama", screen_sync_brightness: 160,
+    screen_sync_reactivity: "balanced", screen_sync_colour_intensity: "natural",
+    screen_sync_black_threshold: 8, screen_sync_ignore_black_bars: true,
+    screen_sync_screensaver_enabled: true,
+    screen_sync: { activation: { reason: "game-route" } },
     performance_metric: "mixed", performance_smoothing: "balanced", performance_always: true,
     mixed_direction: "mirrored", temperature_palette: "custom",
     cool_temp_c: 45, hot_temp_c: 80,
@@ -38,7 +43,7 @@ const sampleStatus = {
     weather_display: "off", weather_location: null, weather_topbar_enabled: false,
     weather_brightness: 65, weather_shadow_cutoff: 25,
     weather_clear_day_variant: 0, weather_clear_night_variant: 0, weather_rain_variant: 0,
-    weather_cloud_variant: 0, weather_breaks_variant: 0, weather_breaks_night_variant: 0, weather_snow_variant: 0, weather_storm_variant: 0,
+    weather_cloud_variant: 0, weather_cloud_night_variant: 0, weather_breaks_variant: 0, weather_breaks_night_variant: 0, weather_snow_variant: 0, weather_storm_variant: 0,
     reverse_led_order: true, countdown_dark_edge_compensation: 2,
     debug: { led_path: "/private/device/path" },
 } as unknown as Status;
@@ -46,12 +51,12 @@ const sampleStatus = {
 test("debug snapshot includes every settings group and distinguishes defaults from the running game's choices", () => {
   const snapshot = buildSettingsSnapshot(sampleStatus);
   assert.deepEqual(snapshot.map((section) => section.title),
-    ["Display", "Customization+", "Artwork", "Performance", "Game launches", "Playtime", "Light events", "Controllers", "Weather", "Advanced"]);
+    ["Display", "Customization+", "Artwork", "Performance", "Screen Sync", "Game launches", "Playtime", "Light events", "Controllers", "Weather", "Advanced"]);
   const text = snapshot.flatMap((section) => section.lines).join("\n");
   for (const expected of ["Example Game", "Library Hero", "Library Header", "83%", "CPU + GPU",
     "Balanced", "Mirrored", "#0C2238", "2 h", "Centre echo", "Return + confetti",
     "Expanding echoes", "Continuous on Home", "Bright tip", "#00C819", "Pattern steady", "Brightness 128/255",
-    "Weather LED brightness 65%", "Extra dark LEDs 2"]) {
+    "Style panorama", "Black threshold 8", "Weather LED brightness 65%", "Extra dark LEDs 2"]) {
     assert.ok(text.includes(expected), expected);
   }
   assert.ok(!text.includes("/private/device/path"));

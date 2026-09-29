@@ -12,6 +12,7 @@ from signalbar.updates import (
     GitHubReleaseClient,
     UpdateError,
     UpdateManager,
+    _version_order,
     _version_tuple,
     validate_and_stage_archive,
 )
@@ -135,6 +136,11 @@ class UpdateTests(unittest.TestCase):
     def test_versions_require_stable_semver_but_accept_local_test_install(self):
         self.assertEqual(_version_tuple("v1.1.0"), (1, 1, 0))
         self.assertEqual(_version_tuple("1.0.99-test.1", allow_test=True), (1, 0, 99, -1, 1))
+        self.assertEqual(_version_tuple("1.2.0-beta1", allow_test=True), (1, 2, 0, -2, 1))
+        self.assertGreater(_version_order("1.2.0"),
+                           _version_order("1.2.0-beta1", allow_test=True))
+        self.assertLess(_version_order("1.1.0"),
+                        _version_order("1.2.0-beta1", allow_test=True))
         for invalid in ("1.1", "1.1.0-beta", "01.1.0", "latest"):
             with self.assertRaises(UpdateError, msg=invalid):
                 _version_tuple(invalid)

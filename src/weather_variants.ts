@@ -2,9 +2,10 @@ import type { WeatherCondition } from "./types";
 
 export const WEATHER_CONDITIONS: { data: WeatherCondition; label: string }[] = [
   { data: "clear_day", label: "Clear sky · sun" },
-  { data: "clear_night", label: "Clear sky · moon + stars" },
+  { data: "clear_night", label: "Clear sky · night" },
   { data: "rain", label: "Rain" },
   { data: "cloud", label: "Cloud" },
+  { data: "cloud_night", label: "Cloud · night" },
   { data: "breaks", label: "Partly cloudy · day" },
   { data: "breaks_night", label: "Partly cloudy · night" },
   { data: "snow", label: "Snow" },
@@ -17,8 +18,8 @@ export const WEATHER_VARIANTS: Record<WeatherCondition, { label: string; detail:
     { label: "Solar bloom", detail: "A white-yellow centre grows across a steady golden band, then recedes." },
   ],
   clear_night: [
-    { label: "Quiet constellation", detail: "Three stationary stars share one slow, soft cycle." },
-    { label: "Silver hush", detail: "A narrow silver centre breathes slowly into the surrounding night." },
+    { label: "Breathing moon", detail: "Two central moon LEDs breathe gently out to four over exact night blue." },
+    { label: "Lunar bloom", detail: "A stepped white moon halo grows across exact night blue, then recedes." },
   ],
   rain: [
     { label: "Bluewater", detail: "A continuous blue band holds while blue-white drops and short echoes land on it." },
@@ -29,6 +30,12 @@ export const WEATHER_VARIANTS: Record<WeatherCondition, { label: string; detail:
     { label: "Passing shadows", detail: "A second shadow follows from the other side without crossing at the centre." },
     { label: "Cross & gather", detail: "Two cloud pairs cross, then a three-LED cloud slowly gathers smaller ones. 20-second loop." },
     { label: "Slow convergence", detail: "Clouds grow into one eight-LED cloud. It drifts left, returns right, then leaves the bar. 48-second loop." },
+  ],
+  cloud_night: [
+    { label: "Night passing shadow", detail: "One night-blue opening crosses a neutral cloud layer capped at brightness 35." },
+    { label: "Night passing shadows", detail: "Two night-blue openings keep the original separate opposing passes." },
+    { label: "Night cross & gather", detail: "Low-white cloud pairs cross and gather over exact night blue. 20-second loop." },
+    { label: "Night slow convergence", detail: "Low-white points become one eight-LED cloud and keep the original 48-second drift." },
   ],
   breaks: [
     { label: "Sun through clouds", detail: "The familiar sun opens through a soft-white cloud field, then closes." },

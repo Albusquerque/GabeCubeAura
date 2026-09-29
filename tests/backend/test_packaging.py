@@ -8,7 +8,9 @@ class PackagingTests(unittest.TestCase):
         for relative in (
             "main.py", "plugin.json", "package.json", "LICENSE",
             "THIRD_PARTY_NOTICES.md", "scripts/package_plugin.py",
-            "docs/GABECUBEAURA_1.0.0.md",
+            "docs/SCREEN_SYNC.md", "docs/SCREEN_SYNC_INTEGRATION_PLAN.md",
+            "docs/BETA_TEST_PLAN_1.2.0-beta1.md",
+            "docs/RELEASE_NOTES_1.2.0-beta1.md",
         ):
             self.assertTrue((root / relative).is_file(), relative)
         self.assertTrue((root / "py_modules/signalbar/backend/engine.py").is_file())
@@ -21,20 +23,21 @@ class PackagingTests(unittest.TestCase):
         self.assertFalse(any(path.startswith("assets/") for path in packaged))
         self.assertFalse(any(path.startswith("docs/") for path in packaged))
 
-    def test_rebrand_standard_settings_and_lifecycle_guards(self):
+    def test_gabecubeaura_settings_screen_sync_updates_and_lifecycle_guards(self):
         root = Path(__file__).resolve().parents[2]
         panel = (root / "src/index.tsx").read_text(encoding="utf-8")
         customization_catalog = (root / "src/customization_catalog.ts").read_text(encoding="utf-8")
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.1.0"', package)
+        self.assertIn('"version": "1.2.0-beta1"', package)
         self.assertIn('"url": "git+https://github.com/Alyenax/GabeCubeAura.git"', package)
         self.assertNotIn("Albusquerque/GabeCubeAura", package)
         self.assertIn('routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings)', panel)
         self.assertIn('routerHook.removeRoute("/gabecubeaura/settings")', panel)
         self.assertIn('return <SidebarNavigation title="GabeCubeAura settings"', panel)
         self.assertIn('route: "/gabecubeaura/settings/customization"', panel)
+        self.assertIn('route: "/gabecubeaura/settings/screen-sync"', panel)
         self.assertIn('route: "/gabecubeaura/settings/launches"', panel)
         self.assertNotIn('Content page="settings"', panel)
         self.assertIn('{ data: "steam", label: "GabeCubeAura Off" }', panel)
@@ -75,7 +78,8 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(panel.count("void runLaunchPreview()"), 2)
         self.assertNotIn('<PalettePreview colors={status.launch_artwork.dominant_colors ?? []} />', panel)
         self.assertNotIn("Live 17-LED launch preview", panel[artwork:second_preview])
-        self.assertIn('page === "compatibility" || page === "launches" ? 100 : 1000', panel)
+        self.assertIn('page === "compatibility" || page === "launches" ? 100', panel)
+        self.assertIn('page === "screen-sync" ? 250 : 1000', panel)
         self.assertIn('<Focusable style={{ width: "100%", paddingBottom: 28, scrollMarginBottom: 24 }} aria-label="Launch artwork preview">', panel)
         self.assertIn('label="Palette source"', panel)
         self.assertIn('label="Number of colours"', panel)
@@ -86,12 +90,26 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('label="Automatically check for updates"', panel)
         self.assertIn('label="Notify me when an update is available"', panel)
         self.assertIn('Update lab · TEST BUILD', panel)
+        self.assertIn('stripmine_priority_screen_sync', panel)
+        self.assertIn('{ data: "screen_sync", label: "Screen Sync" }', panel)
+        self.assertIn('<ScreenSyncPanel status={status}', panel)
+        self.assertIn('label="Refresh capture status"', panel)
+        self.assertIn('label="Use during Steam screensaver"', panel)
+        self.assertIn('label="Preview Screen Sync"', panel)
+        self.assertIn('<PanelSection title="Capture fallback">', panel)
+        self.assertIn('function SettingsPageEnd', panel)
+        self.assertIn('page !== "quick" ? <SettingsPageEnd page={page} setStatus={setStatus} />', panel)
+        self.assertIn('label={`End of ${PAGE_END_LABELS[page]} settings`}', panel)
 
         runtime = (root / "src/runtime.ts").read_text(encoding="utf-8")
-        self.assertIn('this.observeRunningApp("startup");', runtime)
+        self.assertIn('this.session.seed(runningApp())', runtime)
+        self.assertIn('this.session.observePoll(runningApp())', runtime)
+        self.assertIn('this.session.observeLifetime(', runtime)
         self.assertIn("RegisterForAppLifetimeNotifications", runtime)
         self.assertIn("RegisterForOnResumeFromSuspend", runtime)
         self.assertIn("RegisterForParentalPlaytimeWarnings", runtime)
+        self.assertIn("isSteamScreensaverService", runtime)
+        self.assertIn('setScreenSyncContext("steam-screensaver"', runtime)
         self.assertIn("const runtime = startGabeCubeAuraRuntime()", panel)
         self.assertIn("weatherTopBar.stop()", panel)
 

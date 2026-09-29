@@ -61,6 +61,7 @@ class CoreTests(unittest.TestCase):
             "stripmine_priority_controller": "signalbar",
             "stripmine_priority_light_events": "signalbar",
             "stripmine_priority_game_launches": "stripmine",
+            "stripmine_priority_screen_sync": "signalbar",
         }
         self.assertEqual(Engine._stripmine_priority("artwork:hero", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("performance", values), "signalbar")
@@ -68,6 +69,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(Engine._stripmine_priority("controller:persistent", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("event:achievement", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("launch-artwork:ripple", values), "stripmine")
+        self.assertEqual(Engine._stripmine_priority("screen-sync", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("countdown", values), "signalbar")
         self.assertEqual(Engine._stripmine_priority("none", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("valve", values), "stripmine")
@@ -353,6 +355,28 @@ class CoreTests(unittest.TestCase):
         self.assertFalse(guard.observe("native-b"))
         clock.advance(0.2)
         self.assertTrue(guard.observe("native-b"))
+
+    def test_guard_escalates_repeated_native_writes_to_hard_priority(self):
+        clock = ManualClock()
+        guard = VanillaGuard(cooldown_s=5, stable_s=.5, clock=clock)
+        guard.observe("native")
+        clock.advance(.6)
+        self.assertTrue(guard.observe("native"))
+        self.assertFalse(guard.observe("steam-1", expected_signature="gca-1"))
+        self.assertFalse(guard.hard_priority)
+        clock.advance(.2)
+        self.assertFalse(guard.observe("steam-2", expected_signature="gca-2"))
+        self.assertTrue(guard.hard_priority)
+        self.assertEqual(guard.hard_reason, "repeated native LED activity")
+
+    def test_explicit_steam_activity_is_always_hard_priority(self):
+        clock = ManualClock()
+        guard = VanillaGuard(cooldown_s=5, stable_s=.5, clock=clock)
+        guard.observe("native")
+        clock.advance(.6)
+        guard.observe("native", explicit_active=True, explicit_reason="Steam download activity")
+        self.assertTrue(guard.hard_priority)
+        self.assertEqual(guard.hard_reason, "Steam download activity")
 
     def test_arbiter_transitions(self):
         arbiter = Arbiter()

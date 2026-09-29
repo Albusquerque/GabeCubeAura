@@ -7,13 +7,13 @@ import {
   customizationPatternLabel,
 } from "../../src/customization_catalog";
 
-test("Customization+ groups all 61 unchanged names by dynamism", () => {
+test("Customization+ groups all 65 unchanged names by dynamism", () => {
   assert.deepEqual(CUSTOMIZATION_PATTERN_OPTIONS.map((group) => group.label), [
     "Calm & ambient", "Flowing", "Energetic",
   ]);
   const grouped = CUSTOMIZATION_PATTERN_OPTIONS.flatMap((group) => group.options);
-  assert.equal(grouped.length, 61);
-  assert.equal(new Set(grouped.map((entry) => entry.data)).size, 61);
+  assert.equal(grouped.length, 65);
+  assert.equal(new Set(grouped.map((entry) => entry.data)).size, 65);
   assert.deepEqual(
     grouped.map((entry) => entry.data).sort(),
     CUSTOMIZATION_PATTERN_ENTRIES.map((entry) => entry.data).sort(),
