@@ -19,20 +19,28 @@ import { TbCubeSpark } from "react-icons/tb";
 
 import {
   exportConfiguration,
+  exportUpdateTestReport,
+  checkForUpdates,
+  dismissUpdateError,
   importConfiguration,
   getArtwork,
   getStatus,
+  getUpdateStatus,
+  installPreparedUpdate,
   previewCountdown,
   previewCustomization,
   previewLaunchArtwork,
   previewController,
   previewWeather,
+  prepareUpdate,
   resetConfiguration,
+  runUpdateLabScenario,
   searchWeatherCities,
   setArtworkSetting,
   setLaunchArtworkSetting,
   setGameDisplay,
   setSetting,
+  setUpdatePreferences,
   startFreeTimer,
   stopFreeTimer,
   submitArtwork,
@@ -45,10 +53,11 @@ import { CONTROLLER_VARIANTS } from "./controller_variants";
 import { EVENT_VARIANTS } from "./event_variants";
 import { hslStringToRgb, performancePreview, rgbToHsl } from "./performance";
 import { startGabeCubeAuraRuntime } from "./runtime";
+import { startUpdateNotifications } from "./update_notifications";
 import { buildSettingsSnapshot } from "./settings_snapshot";
 import { WEATHER_CONDITIONS, WEATHER_VARIANTS } from "./weather_variants";
 import { startWeatherTopBar } from "./weather_topbar";
-import type { ArtworkPayload, ArtworkSource, CompanionPriority, GameDisplay, HomeDisplay, RGB, Status, WeatherCondition, WeatherLocation } from "./types";
+import type { ArtworkPayload, ArtworkSource, CompanionPriority, GameDisplay, HomeDisplay, RGB, Status, UpdateLabResult, UpdateStatus, WeatherCondition, WeatherLocation } from "./types";
 
 const HOME_DISPLAY_OPTIONS: { data: HomeDisplay; label: string }[] = [
   { data: "steam", label: "GabeCubeAura Off" },
@@ -177,6 +186,33 @@ function formatAge(seconds: number | null): string {
   if (seconds == null) return "never";
   if (seconds < 1) return `${Math.round(seconds * 1000)} ms ago`;
   return `${seconds.toFixed(1)} s ago`;
+}
+
+function formatUpdateDate(timestamp: number): string {
+  if (!timestamp) return "Never";
+  try {
+    return new Date(timestamp * 1000).toLocaleString();
+  } catch {
+    return "Unavailable";
+  }
+}
+
+function updatePhaseLabel(update: UpdateStatus): string {
+  switch (update.phase) {
+    case "checking": return "Checking for updates...";
+    case "up_to_date": return "GabeCubeAura is up to date.";
+    case "available": return `Version ${update.available_version} is available.`;
+    case "downloading": return `Downloading ${update.available_version}...`;
+    case "verifying": return "Checking the downloaded package...";
+    case "ready": return `Ready to install ${update.available_version}.`;
+    case "installing":
+    case "restart_pending": return "Restarting Decky to finish the update...";
+    case "updated": return `Updated successfully to ${update.installed_version}.`;
+    case "rolled_back": return `The new version did not start correctly. GabeCubeAura restored ${update.rollback_version || update.installed_version}.`;
+    case "error": return update.error || "Could not check for updates. Try again later.";
+    case "managed_by_decky": return "Updates are managed by Decky.";
+    default: return "Ready to check for updates.";
+  }
 }
 
 function controllerChargeLabel(controller: Status["controllers"]["controllers"][number]): string {
@@ -876,7 +912,7 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
   </>;
 }
 
-type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "advanced";
+type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "updates" | "advanced";
 
 function Content({ page = "quick" }: { page?: Page }) {
   const [status, setStatusState] = useState<Status | null>(null);
@@ -891,6 +927,10 @@ function Content({ page = "quick" }: { page?: Page }) {
   const [configurationActionMessage, setConfigurationActionMessage] = useState("");
   const [configurationBusy, setConfigurationBusy] = useState(false);
   const [launchPreviewError, setLaunchPreviewError] = useState("");
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateLabResult, setUpdateLabResult] = useState<UpdateLabResult | null>(null);
+  const [updateLabReportPath, setUpdateLabReportPath] = useState("");
   const manualTimer = useRef<number | null>(null);
   const setStatus = (next: Status) => {
     setStatusState(next);
@@ -907,6 +947,20 @@ function Content({ page = "quick" }: { page?: Page }) {
       alive = false;
       window.clearInterval(timer);
       if (manualTimer.current != null) window.clearTimeout(manualTimer.current);
+    };
+  }, [page]);
+
+  useEffect(() => {
+    if (page !== "quick" && page !== "updates" && page !== "advanced") return;
+    let alive = true;
+    const refresh = () => void getUpdateStatus()
+      .then((next) => alive && setUpdate(next))
+      .catch((error) => console.warn("[GabeCubeAura] update status failed", error));
+    refresh();
+    const timer = window.setInterval(refresh, page === "updates" ? 1000 : 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
     };
   }, [page]);
 
@@ -1122,6 +1176,57 @@ function Content({ page = "quick" }: { page?: Page }) {
         : status.provider === "none" ? "No GabeCubeAura output" : status.provider;
   const showPage = (target: Page) => page === target;
 
+  const runUpdateAction = async (action: () => Promise<UpdateStatus>) => {
+    setUpdateBusy(true);
+    try {
+      setUpdate(await action());
+    } catch (error) {
+      console.warn("[GabeCubeAura] update action failed", error);
+      setUpdate(await getUpdateStatus());
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
+  const confirmUpdateInstall = () => {
+    if (!update?.confirmation_token || !update.available_version) return;
+    const token = update.confirmation_token;
+    const target = update.available_version;
+    let modal: ReturnType<typeof showModal> | undefined;
+    modal = showModal(<ConfirmModal strTitle="Update GabeCubeAura?"
+      strDescription={`Update from ${update.installed_version} to ${target}? The downloaded package passed its checksum and package checks. Your settings and artwork cache will be kept. Decky will restart briefly.`}
+      strOKButtonText="Update and restart Decky" strCancelButtonText="Cancel"
+      onCancel={() => modal?.Close()}
+      onOK={() => {
+        modal?.Close();
+        setUpdateBusy(true);
+        void installPreparedUpdate(token).catch((error) => {
+          console.warn("[GabeCubeAura] update installation failed", error);
+          setUpdateBusy(false);
+          void getUpdateStatus().then(setUpdate).catch(console.warn);
+        });
+      }} />);
+  };
+
+  const runUpdateLab = async (scenario: UpdateLabResult["scenario"]) => {
+    setUpdateBusy(true);
+    setUpdateLabReportPath("");
+    try {
+      setUpdateLabResult(await runUpdateLabScenario(scenario));
+    } catch (error) {
+      setUpdateLabResult({
+        scenario,
+        passed: false,
+        started_at: 0,
+        finished_at: 0,
+        details: String(error),
+        report_available: false,
+      });
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+
   return (
     <>
       {page === "quick" ? <PanelSection title="Status">
@@ -1134,6 +1239,16 @@ function Content({ page = "quick" }: { page?: Page }) {
             ) : <div>No game running</div>}
             {status.suspension_reason ? <div style={{ opacity: 0.72 }}>{status.suspension_reason}</div> : null}
           </div>
+        </PanelSectionRow>
+      </PanelSection> : null}
+
+      {page === "quick" && update?.phase === "available" ? <PanelSection title="Software update">
+        <PanelSectionRow>
+          <ButtonItem label={`Update available: ${update.available_version}`}
+            description="Review the release notes and package checks before installing."
+            onClick={() => { Navigation.CloseSideMenus(); Navigation.Navigate("/gabecubeaura/settings/updates"); }}>
+            Review update
+          </ButtonItem>
         </PanelSectionRow>
       </PanelSection> : null}
 
@@ -1528,6 +1643,53 @@ function Content({ page = "quick" }: { page?: Page }) {
 
       {showPage("compatibility") ? <CompatibilityPanel status={status} setStatus={setStatus} /> : null}
 
+      {showPage("updates") && update ? <>
+        <PanelSection title="Software updates">
+          <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em", lineHeight: 1.45 }}>
+            <div>Installed version: <b>{update.installed_version}</b></div>
+            <div>Latest stable version: <b>{update.available_version || update.installed_version}</b></div>
+            <div>Current status: <b>{updatePhaseLabel(update)}</b></div>
+            <div>Last checked: {formatUpdateDate(update.last_checked_at)}</div>
+            {update.prepared_digest ? <div>Verified SHA256: <code>{update.prepared_digest.slice(0, 12)}...</code></div> : null}
+            {update.test_build ? <div style={{ marginTop: 6, color: "#ffd166", fontWeight: 700 }}>TEST BUILD</div> : null}
+          </div></PanelSectionRow>
+          <PanelSectionRow><ButtonItem label="Check for updates"
+            disabled={updateBusy || ["checking", "downloading", "verifying", "ready", "installing", "restart_pending"].includes(update.phase)}
+            onClick={() => void runUpdateAction(checkForUpdates)}>Check now</ButtonItem></PanelSectionRow>
+          {update.release_url ? <PanelSectionRow><ButtonItem label="View release notes"
+            description="Opens the official Alyenax/GabeCubeAura release page."
+            onClick={() => Navigation.NavigateToExternalWeb(update.release_url)}>Open GitHub</ButtonItem></PanelSectionRow> : null}
+          {update.phase === "available" ? <PanelSectionRow><ButtonItem label="Download update"
+            description="Downloads and checks the archive. Nothing is installed yet."
+            disabled={updateBusy} onClick={() => void runUpdateAction(prepareUpdate)}>Download and verify</ButtonItem></PanelSectionRow> : null}
+          {update.phase === "ready" ? <PanelSectionRow><ButtonItem label={`Install ${update.available_version}`}
+            description="Settings and artwork caches are kept. Decky restarts briefly."
+            disabled={updateBusy} onClick={confirmUpdateInstall}>Update and restart Decky</ButtonItem></PanelSectionRow> : null}
+          {update.release_notes ? <PanelSectionRow><div style={{ width: "100%", fontSize: ".76em", opacity: .8, whiteSpace: "pre-wrap", maxHeight: 180, overflow: "hidden" }}>
+            {update.release_notes}
+          </div></PanelSectionRow> : null}
+          {update.phase === "error" ? <PanelSectionRow><ButtonItem label="Dismiss update error"
+            onClick={() => void runUpdateAction(dismissUpdateError)}>Dismiss</ButtonItem></PanelSectionRow> : null}
+        </PanelSection>
+        <PanelSection title="Automatic checks">
+          <PanelSectionRow><ToggleField label="Automatically check for updates"
+            description="Checks the official Alyenax/GabeCubeAura GitHub releases once a day. Nothing is installed without your confirmation."
+            checked={update.auto_check} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(value, update.notifications))} /></PanelSectionRow>
+          <PanelSectionRow><ToggleField label="Notify me when an update is available"
+            description="Shows one Decky notification for each new stable version."
+            checked={update.notifications} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(update.auto_check, value))} /></PanelSectionRow>
+        </PanelSection>
+        <PanelSection title="Installation safety">
+          <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .82 }}>
+            Updates are downloaded from the official GabeCubeAura repository and checked before installation. Settings and artwork caches are kept. Decky restarts briefly after an update.
+            {update.last_result ? <div style={{ marginTop: 7 }}>Last result: {updatePhaseLabel(update)}</div> : null}
+          </div></PanelSectionRow>
+          <PanelSectionRow><ButtonItem label="Check again"
+            description="Final focusable control for controller navigation."
+            disabled={updateBusy || update.phase === "ready"} onClick={() => void runUpdateAction(checkForUpdates)}>Check for updates</ButtonItem></PanelSectionRow>
+        </PanelSection>
+      </> : null}
+
       {showPage("advanced") ? <PanelSection title="Advanced / debug">
         <PanelSectionRow>
           <ToggleField
@@ -1660,6 +1822,31 @@ function Content({ page = "quick" }: { page?: Page }) {
         ) : null}
       </PanelSection> : null}
 
+      {showPage("advanced") && update?.test_build ? <PanelSection title="Update lab · TEST BUILD">
+        <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .84 }}>
+          These fixtures use isolated directories. They never replace the installed plugin or restart the real Decky service.
+        </div></PanelSectionRow>
+        <PanelSectionRow><ButtonItem label="Valid package"
+          description="Build and validate a fixed local GabeCubeAura 1.1.0 fixture."
+          disabled={updateBusy} onClick={() => void runUpdateLab("valid-package")}>Run validation only</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem label="Checksum mismatch"
+          description="Confirm that a wrong SHA256 is rejected before staging."
+          disabled={updateBusy} onClick={() => void runUpdateLab("checksum-mismatch")}>Run rejection test</ButtonItem></PanelSectionRow>
+        <PanelSectionRow><ButtonItem label="Rollback rehearsal"
+          description="Install a broken fixture in isolated directories and restore the previous fixture."
+          disabled={updateBusy} onClick={() => void runUpdateLab("rollback")}>Rehearse rollback</ButtonItem></PanelSectionRow>
+        {updateLabResult ? <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", color: updateLabResult.passed ? "#9ee8b0" : "#ff9e9e" }}>
+          <b>{updateLabResult.passed ? "Passed" : "Failed"}: {updateLabResult.scenario}</b>
+          <div style={{ marginTop: 4, opacity: .86 }}>{updateLabResult.details}</div>
+        </div></PanelSectionRow> : null}
+        <PanelSectionRow><ButtonItem label="Export test report"
+          description={updateLabReportPath || "Writes the bounded fixture report to Documents."}
+          disabled={updateBusy || !updateLabResult?.report_available}
+          onClick={() => void exportUpdateTestReport().then((result) => setUpdateLabReportPath(result.path)).catch((error) => setUpdateLabReportPath(String(error)))}>
+          Export JSON
+        </ButtonItem></PanelSectionRow>
+      </PanelSection> : null}
+
     </>
   );
 }
@@ -1676,6 +1863,7 @@ function GabeCubeAuraSettings() {
     { title: "Controllers", route: "/gabecubeaura/settings/controllers", content: <Content page="controllers" /> },
     { title: "Weather", route: "/gabecubeaura/settings/weather", content: <Content page="weather" /> },
     { title: "Compatibility", route: "/gabecubeaura/settings/compatibility", content: <Content page="compatibility" /> },
+    { title: "Updates", route: "/gabecubeaura/settings/updates", content: <Content page="updates" /> },
     "separator",
     { title: "Advanced / debug", route: "/gabecubeaura/settings/advanced", content: <Content page="advanced" /> },
   ]} />;
@@ -1686,6 +1874,7 @@ export default definePlugin(() => {
   // Runtime signals must start here, not when the user first opens the panel.
   const runtime = startGabeCubeAuraRuntime();
   const weatherTopBar = startWeatherTopBar();
+  const updateNotifications = startUpdateNotifications();
   routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings);
   return {
     name: "GabeCubeAura",
@@ -1696,6 +1885,7 @@ export default definePlugin(() => {
     onDismount() {
       runtime.stop();
       weatherTopBar.stop();
+      updateNotifications.stop();
       routerHook.removeRoute("/gabecubeaura/settings");
     },
   };

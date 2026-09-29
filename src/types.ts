@@ -16,6 +16,42 @@ export type CompanionPriority = "stripmine" | "signalbar";
 export type WeatherCondition = "clear_day" | "clear_night" | "rain" | "cloud" | "breaks" | "breaks_night" | "snow" | "storm";
 export interface WeatherLocation { name: string; country: string; latitude: number; longitude: number }
 
+export type UpdatePhase = "idle" | "checking" | "up_to_date" | "available"
+  | "downloading" | "verifying" | "ready" | "installing" | "restart_pending"
+  | "updated" | "rolled_back" | "error" | "managed_by_decky";
+
+export interface UpdateStatus {
+  phase: UpdatePhase;
+  installed_version: string;
+  available_version: string;
+  last_checked_at: number;
+  next_check_at: number;
+  notified_version: string;
+  release_notes: string;
+  release_url: string;
+  prepared_digest: string;
+  confirmation_token: string;
+  rollback_version: string;
+  last_result: string;
+  error_category: string;
+  error: string;
+  auto_check: boolean;
+  notifications: boolean;
+  test_build: boolean;
+}
+
+export interface UpdateLabResult {
+  scenario: "valid-package" | "checksum-mismatch" | "rollback";
+  passed: boolean;
+  started_at: number;
+  finished_at: number;
+  details: string;
+  digest?: string;
+  service_starts?: number;
+  service_stops?: number;
+  report_available: boolean;
+}
+
 export interface Status {
   version: string;
   available: boolean;

@@ -16,6 +16,8 @@ class PackagingTests(unittest.TestCase):
         packaged = {str(path.relative_to(root)) for path in iter_files(require_build=False)}
         self.assertIn("THIRD_PARTY_NOTICES.md", packaged)
         self.assertIn("py_modules/signalbar/backend/engine.py", packaged)
+        self.assertIn("py_modules/signalbar/updates.py", packaged)
+        self.assertIn("py_modules/signalbar/update_helper.py", packaged)
         self.assertFalse(any(path.startswith("assets/") for path in packaged))
         self.assertFalse(any(path.startswith("docs/") for path in packaged))
 
@@ -26,7 +28,9 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.0.0"', package)
+        self.assertIn('"version": "1.1.0"', package)
+        self.assertIn('"url": "git+https://github.com/Alyenax/GabeCubeAura.git"', package)
+        self.assertNotIn("Albusquerque/GabeCubeAura", package)
         self.assertIn('routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings)', panel)
         self.assertIn('routerHook.removeRoute("/gabecubeaura/settings")', panel)
         self.assertIn('return <SidebarNavigation title="GabeCubeAura settings"', panel)
@@ -77,6 +81,11 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('label="Number of colours"', panel)
         self.assertIn('setLaunchArtworkSetting', panel)
         self.assertIn('stripmine_priority_customization', panel)
+        self.assertIn('route: "/gabecubeaura/settings/updates"', panel)
+        self.assertIn('label="Check for updates"', panel)
+        self.assertIn('label="Automatically check for updates"', panel)
+        self.assertIn('label="Notify me when an update is available"', panel)
+        self.assertIn('Update lab · TEST BUILD', panel)
 
         runtime = (root / "src/runtime.ts").read_text(encoding="utf-8")
         self.assertIn('this.observeRunningApp("startup");', runtime)
@@ -89,6 +98,16 @@ class PackagingTests(unittest.TestCase):
         packager = (root / "scripts/package_plugin.py").read_text(encoding="utf-8")
         self.assertIn('f"GabeCubeAura-v{PACKAGE[\'version\']}.zip"', packager)
         self.assertIn('Path("GabeCubeAura") / relative', packager)
+        self.assertIn('FIXED_OUTPUT = ROOT / "out" / "GabeCubeAura.zip"', packager)
+        self.assertIn('CHECKSUMS = ROOT / "out" / "SHA256SUMS"', packager)
+
+        updates = (root / "py_modules/signalbar/updates.py").read_text(encoding="utf-8")
+        helper = (root / "py_modules/signalbar/update_helper.py").read_text(encoding="utf-8")
+        self.assertIn('OWNER = "Alyenax"', updates)
+        self.assertIn('ssl.create_default_context()', updates)
+        self.assertNotIn("CERT_NONE", updates)
+        self.assertIn("RENAME_EXCHANGE", helper)
+        self.assertIn('"plugin_loader.service"', helper)
 
 
 if __name__ == "__main__":

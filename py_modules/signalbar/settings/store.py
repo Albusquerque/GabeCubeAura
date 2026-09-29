@@ -109,6 +109,8 @@ DEFAULTS = {
     "stripmine_priority_customization": "stripmine",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
+    "updates_auto_check": True,
+    "updates_notifications": True,
 }
 
 VALID_MODES = {"artwork", "performance", "customization", "events", "disabled"}
@@ -341,7 +343,7 @@ class SettingsStore:
             "events_enabled", "event_notifications_enabled", "event_achievements_enabled",
             "event_screenshots_enabled", "event_recording_enabled", "recording_marker_isolation",
             "controller_alerts_enabled", "controller_connect_enabled", "controller_low_enabled",
-            "controller_charging_enabled",
+            "controller_charging_enabled", "updates_auto_check", "updates_notifications",
         ):
             self._data[key] = bool(self._data[key])
         for key, choices in EVENT_VARIANTS.items():

@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.1.0 - 2026-09-29
+
+- Add a dedicated Updates page with manual checks, daily background checks and
+  one optional Decky notification for each new stable version.
+- Download only fixed assets from the official `Alyenax/GabeCubeAura` GitHub
+  releases. Keep certificate and hostname verification enabled and reject
+  unexpected redirects.
+- Verify release metadata, compressed and extracted size limits, SHA256,
+  archive paths, required files, plugin identity and target version before any
+  installed file is changed.
+- Require explicit confirmation before installation. Decky restarts briefly
+  only after the complete package has been staged and verified.
+- Preserve settings and artwork caches outside the replaced plugin directory.
+  Restore the previous version automatically if the new backend does not
+  acknowledge a healthy startup within 45 seconds.
+- Add an isolated Update lab to local test builds for valid-package, checksum
+  rejection and rollback rehearsals. The lab is hidden from stable builds and
+  never touches the real plugin directory or Decky service.
+- Produce a lean versioned archive, an identical fixed-name recovery archive
+  and `SHA256SUMS` without adding GitHub Actions.
+- Move public repository, issue, image and installation links to
+  `Alyenax/GabeCubeAura`.
+
 ## Decky Store submission preparation - 2026-09-27
 
 - Set the public package and plugin author to Albus Querque and add the canonical repository, issue tracker and homepage metadata.
@@ -53,7 +76,7 @@ Official release. Changes since 0.6.1:
 ### Light Events only and StripMine coordination
 
 - Add **Light Events only** as a fourth display mode. It leaves the bar untouched between Steam notifications, achievements, screenshots, and recording animations. Saved Artwork and Performance profiles remain dormant until another display mode is selected.
-- Answer [issue #1](https://github.com/Albusquerque/SignalBar/issues/1): Light Events can now run without enabling Artwork or Performance.
+- Answer [issue #1](https://github.com/Alyenax/SignalBar/issues/1): Light Events can now run without enabling Artwork or Performance.
 - Add coordinated Light-event handoff for StripMine, which is developed by the same author. SignalBar publishes a short renewable lease, waits briefly for StripMine to yield, plays the event, restores the exact pre-event frame, then releases the lease so StripMine can resume automatically.
 - Keep the handoff fail-safe. The lease expires after a crash, and StripMine verifies the restored LED signature before reclaiming the bar. Local arbitration and lifecycle tests pass; the physical transition still requires Steam Machine validation.
 

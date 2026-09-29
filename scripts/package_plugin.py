@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
+import shutil
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
 OUTPUT = ROOT / "out" / f"GabeCubeAura-v{PACKAGE['version']}.zip"
+FIXED_OUTPUT = ROOT / "out" / "GabeCubeAura.zip"
+CHECKSUMS = ROOT / "out" / "SHA256SUMS"
 FILES = [
     "main.py",
     "plugin.json",
@@ -37,6 +41,14 @@ def main():
         for path in iter_files():
             relative = path.relative_to(ROOT)
             archive.write(path, Path("GabeCubeAura") / relative)
+    if OUTPUT.stat().st_size > 5 * 1024 * 1024:
+        raise SystemExit("runtime archive exceeds the 5 MiB updater limit")
+    shutil.copy2(OUTPUT, FIXED_OUTPUT)
+    digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
+    CHECKSUMS.write_text(
+        f"{digest}  {OUTPUT.name}\n{digest}  {FIXED_OUTPUT.name}\n",
+        encoding="utf-8",
+    )
     print(OUTPUT)
 
 

@@ -5,9 +5,9 @@ release.
 
 ## Result
 
-- The primary repository is `Albusquerque/GabeCubeAura` and retains the full
+- The primary repository is `Alyenax/GabeCubeAura` and retains the full
   SignalBar history.
-- The former `Albusquerque/SignalBar` repository URL redirects to the renamed
+- The former `Alyenax/SignalBar` repository URL redirects to the renamed
   repository.
 - The product is a final `1.0.0` release, not a beta.
 - GitHub Actions is not used for the release. The ZIP and checksum are built,
@@ -49,11 +49,11 @@ does not delete the source.
 
 ### Concept Lab
 
-- Canonical repository: `Albusquerque/gabecubeaura-concept`.
-- Canonical page: `https://albusquerque.github.io/gabecubeaura-concept/`.
+- Canonical repository: `Alyenax/gabecubeaura-concept`.
+- Canonical page: `https://alyenax.github.io/gabecubeaura-concept/`.
 - Published commit: `edbbb08`.
-- Legacy repository: `Albusquerque/signalbar-concept`.
-- Legacy page: `https://albusquerque.github.io/signalbar-concept/`.
+- Legacy repository: `Alyenax/signalbar-concept`.
+- Legacy page: `https://alyenax.github.io/signalbar-concept/`.
 - Legacy redirect commit: `4eb58f8`.
 - Browser audit passed over HTTP and direct file opening, including every major
   simulator tab, per-game and per-source palettes, all sampled datasets,
@@ -61,13 +61,13 @@ does not delete the source.
 
 ### Controller battery annex
 
-- Canonical repository: `Albusquerque/gabecubeaura-controller-battery`.
+- Canonical repository: `Alyenax/gabecubeaura-controller-battery`.
 - Canonical page:
-  `https://albusquerque.github.io/gabecubeaura-controller-battery/`.
+  `https://alyenax.github.io/gabecubeaura-controller-battery/`.
 - Published commit: `99a7fb4`.
-- Legacy repository: `Albusquerque/signalbar-controller-battery`.
+- Legacy repository: `Alyenax/signalbar-controller-battery`.
 - Legacy page:
-  `https://albusquerque.github.io/signalbar-controller-battery/`.
+  `https://alyenax.github.io/signalbar-controller-battery/`.
 - Legacy redirect commit: `62cbd5c`.
 - Browser audit passed for five controller scenes, three variants per scene,
   17 logical LEDs, keyboard controls, desktop layout and 390 px layout.

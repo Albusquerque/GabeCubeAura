@@ -24,9 +24,9 @@ are preserved when upgrading.
   colours, and controller-only brightness. Preview buttons use sample data and
   work without a controller connected.
 
-![Two mirrored controller gauges followed by continuous charging](https://raw.githubusercontent.com/Albusquerque/GabeCubeAura/main/docs/media/animations/controller-battery.gif)
+![Two mirrored controller gauges followed by continuous charging](https://raw.githubusercontent.com/Alyenax/GabeCubeAura/main/docs/media/animations/controller-battery.gif)
 
-[Explore the interactive controller mockup](https://albusquerque.github.io/signalbar-controller-battery/)
+[Explore the interactive controller mockup](https://alyenax.github.io/signalbar-controller-battery/)
 
 ## Other improvements
 
@@ -72,5 +72,5 @@ depends on the controller and connection type. Automated tests cover startup,
 live updates, stale snapshots, disconnects, charging and priority rules, but
 there is not yet a verified compatibility list for every controller.
 
-For implementation and feature details, see the [README](https://github.com/Albusquerque/SignalBar#readme)
-and [full changelog](https://github.com/Albusquerque/SignalBar/blob/v0.5.0/CHANGELOG.md).
+For implementation and feature details, see the [README](https://github.com/Alyenax/SignalBar#readme)
+and [full changelog](https://github.com/Alyenax/SignalBar/blob/v0.5.0/CHANGELOG.md).

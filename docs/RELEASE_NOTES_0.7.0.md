@@ -1,7 +1,7 @@
 # SignalBar v0.7.0
 
 SignalBar v0.7.0 adds **Light Events only**, directly answering the request in
-[issue #1](https://github.com/Albusquerque/SignalBar/issues/1). Notifications,
+[issue #1](https://github.com/Alyenax/SignalBar/issues/1). Notifications,
 achievements, screenshots, and recording cues can now use the light bar without
 keeping Artwork or Performance active between events.
 
@@ -36,5 +36,5 @@ the archive without extracting it.
 
 Existing settings are preserved when upgrading.
 
-For complete details, see the [README](https://github.com/Albusquerque/SignalBar#readme)
-and [changelog](https://github.com/Albusquerque/SignalBar/blob/v0.7.0/CHANGELOG.md).
+For complete details, see the [README](https://github.com/Alyenax/SignalBar#readme)
+and [changelog](https://github.com/Alyenax/SignalBar/blob/v0.7.0/CHANGELOG.md).

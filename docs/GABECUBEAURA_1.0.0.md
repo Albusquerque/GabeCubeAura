@@ -128,5 +128,5 @@ Game Launches, the complete priority model, and the existing non-game display
 families. Unrelated embedded games and their assets are excluded.
 
 The canonical page is
-`https://albusquerque.github.io/gabecubeaura-concept/`. The former SignalBar
+`https://alyenax.github.io/gabecubeaura-concept/`. The former SignalBar
 Concept Lab address redirects to it.

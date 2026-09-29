@@ -1,6 +1,6 @@
 {
   "name": "gabecubeaura",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Artwork, custom effects, weather and live status lighting for the official Steam Machine",
   "type": "module",
   "packageManager": "pnpm@9.15.9",
@@ -10,6 +10,7 @@
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "PYTHONPYCACHEPREFIX=/tmp/gabecubeaura-pycache PYTHONPATH=py_modules python3 -m unittest discover -s tests/backend -v",
     "test:frontend": "tsx --test tests/frontend/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "package": "python3 scripts/package_plugin.py",
     "media:release": "node scripts/capture_release_gifs.mjs"
   },
@@ -24,12 +25,12 @@
   "license": "BSD-3-Clause",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Albusquerque/GabeCubeAura.git"
+    "url": "git+https://github.com/Alyenax/GabeCubeAura.git"
   },
   "bugs": {
-    "url": "https://github.com/Albusquerque/GabeCubeAura/issues"
+    "url": "https://github.com/Alyenax/GabeCubeAura/issues"
   },
-  "homepage": "https://github.com/Albusquerque/GabeCubeAura#readme",
+  "homepage": "https://github.com/Alyenax/GabeCubeAura#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",

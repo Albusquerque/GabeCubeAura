@@ -30,5 +30,5 @@ it. Restart Decky Loader if SignalBar does not appear immediately.
 
 Existing settings are preserved when upgrading from 0.5.0.
 
-For full details, see the [README](https://github.com/Albusquerque/SignalBar#readme)
-and [changelog](https://github.com/Albusquerque/SignalBar/blob/v0.5.1/CHANGELOG.md).
+For full details, see the [README](https://github.com/Alyenax/SignalBar#readme)
+and [changelog](https://github.com/Alyenax/SignalBar/blob/v0.5.1/CHANGELOG.md).

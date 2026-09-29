@@ -1,0 +1,851 @@
+"""Verified GitHub release discovery and staged GabeCubeAura updates."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import random
+import re
+import shutil
+import ssl
+import stat
+import subprocess
+import sys
+import threading
+import time
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import HTTPSHandler, Request, build_opener, HTTPRedirectHandler
+from zipfile import BadZipFile, ZipFile
+
+
+OWNER = "Alyenax"
+REPOSITORY = "GabeCubeAura"
+API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/releases/latest"
+TEST_RELEASE_API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/releases/tags/v1.1.0"
+EXPECTED_ROOT = "GabeCubeAura"
+CHECK_INTERVAL_SECONDS = 24 * 60 * 60
+STARTUP_DELAY_SECONDS = 120
+MAX_METADATA_BYTES = 512 * 1024
+MAX_CHECKSUM_BYTES = 64 * 1024
+MAX_ARCHIVE_BYTES = 5 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 512
+REQUIRED_FILES = {
+    "main.py",
+    "plugin.json",
+    "package.json",
+    "dist/index.js",
+    "LICENSE",
+    "py_modules/signalbar/__init__.py",
+}
+ALLOWED_HTTPS_HOSTS = {
+    "api.github.com",
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+}
+SYSTEM_CA_BUNDLES = (
+    "/etc/ssl/cert.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/ssl/certs/ca-bundle.crt",
+)
+STABLE_VERSION = re.compile(r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+TEST_VERSION = re.compile(
+    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$"
+)
+HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
+
+
+class UpdateError(RuntimeError):
+    """A bounded, user-safe updater error."""
+
+    def __init__(self, category: str, message: str):
+        super().__init__(message)
+        self.category = category
+
+
+def _version_tuple(value: str, *, allow_test=False):
+    text = str(value or "").strip()
+    match = STABLE_VERSION.fullmatch(text)
+    if match:
+        return tuple(int(part) for part in match.groups())
+    if allow_test:
+        test = TEST_VERSION.fullmatch(text)
+        if test:
+            major, minor, patch, iteration = (int(part) for part in test.groups())
+            return major, minor, patch, -1, iteration
+    raise UpdateError("invalid_version", "The release version is not a stable semantic version")
+
+
+def _atomic_json(path: Path, value: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        json.dump(value, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+    os.chmod(path, 0o600)
+
+
+def _safe_read_json(path: Path, default=None):
+    try:
+        if path.stat().st_size > MAX_METADATA_BYTES:
+            return {} if default is None else default
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else ({} if default is None else default)
+    except (OSError, ValueError, TypeError):
+        return {} if default is None else default
+
+
+def _certificate_failure(error):
+    return isinstance(getattr(error, "reason", error), ssl.SSLCertVerificationError)
+
+
+class _RestrictedRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        parsed = urlparse(newurl)
+        if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HTTPS_HOSTS:
+            raise UpdateError("unsafe_redirect", "GitHub redirected the update to an untrusted host")
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+def _verified_open(request: Request, timeout=10):
+    contexts = [ssl.create_default_context()]
+    for bundle in SYSTEM_CA_BUNDLES:
+        if os.path.isfile(bundle):
+            try:
+                contexts.append(ssl.create_default_context(cafile=bundle))
+            except OSError:
+                continue
+    last_error = None
+    for index, context in enumerate(contexts):
+        try:
+            opener = build_opener(HTTPSHandler(context=context), _RestrictedRedirectHandler())
+            return opener.open(request, timeout=timeout)
+        except URLError as error:
+            last_error = error
+            if not _certificate_failure(error) or index == len(contexts) - 1:
+                raise
+    raise last_error or UpdateError("network", "Unable to open the update URL")
+
+
+def _bounded_read(response, maximum: int):
+    payload = response.read(maximum + 1)
+    if len(payload) > maximum:
+        raise UpdateError("response_too_large", "The update server response is too large")
+    return payload
+
+
+class GitHubReleaseClient:
+    """Read only access to one fixed GitHub repository."""
+
+    def __init__(self, opener=_verified_open, api_url=API_URL, *, allow_prerelease=False):
+        self._open = opener
+        self.api_url = api_url
+        self.allow_prerelease = allow_prerelease
+
+    @staticmethod
+    def _request(url, version, *, etag=""):
+        parsed = urlparse(url)
+        if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HTTPS_HOSTS:
+            raise UpdateError("unsafe_url", "The update source is not an approved GitHub URL")
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": f"GabeCubeAura/{version} updater",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if etag:
+            headers["If-None-Match"] = etag[:256]
+        return Request(url, headers=headers)
+
+    def latest(self, installed_version: str, *, etag=""):
+        request = self._request(self.api_url, installed_version, etag=etag)
+        try:
+            response = self._open(request, timeout=10)
+        except HTTPError as error:
+            if error.code == 304:
+                return {"not_modified": True, "etag": etag}
+            if error.code == 403 and error.headers.get("X-RateLimit-Remaining") == "0":
+                raise UpdateError("rate_limited", "GitHub rate limit reached. Try again later") from error
+            raise UpdateError("http", f"GitHub returned HTTP {error.code}") from error
+        except UpdateError:
+            raise
+        except (URLError, TimeoutError, OSError) as error:
+            raise UpdateError("network", "Could not reach the official GabeCubeAura release") from error
+        with response:
+            payload = _bounded_read(response, MAX_METADATA_BYTES)
+            response_etag = str(response.headers.get("ETag", ""))[:256]
+        try:
+            release = json.loads(payload)
+        except (ValueError, TypeError) as error:
+            raise UpdateError("metadata", "GitHub returned invalid release metadata") from error
+        if (not isinstance(release, dict) or release.get("draft")
+                or release.get("prerelease") and not self.allow_prerelease):
+            raise UpdateError("metadata", "GitHub did not return a published stable release")
+        version = str(release.get("tag_name", "")).removeprefix("v")
+        _version_tuple(version)
+        html_url = str(release.get("html_url", ""))
+        if not html_url.startswith(f"https://github.com/{OWNER}/{REPOSITORY}/releases/tag/"):
+            raise UpdateError("metadata", "The release page does not belong to the official repository")
+        installed = _version_tuple(installed_version, allow_test=True)
+        if _version_tuple(version)[:3] <= installed[:3]:
+            return {
+                "not_modified": False,
+                "version": version,
+                "etag": response_etag,
+            }
+        expected_archive = f"GabeCubeAura-v{version}.zip"
+        assets = release.get("assets")
+        if not isinstance(assets, list):
+            raise UpdateError("metadata", "The release has no asset list")
+        by_name = {}
+        for asset in assets:
+            if isinstance(asset, dict) and isinstance(asset.get("name"), str):
+                by_name[asset["name"]] = asset
+        archive = self._validated_asset(by_name.get(expected_archive), expected_archive)
+        checksums = self._validated_asset(by_name.get("SHA256SUMS"), "SHA256SUMS")
+        if int(archive.get("size", 0)) <= 0 or int(archive.get("size", 0)) > MAX_ARCHIVE_BYTES:
+            raise UpdateError("archive_size", "The release archive size is outside the allowed limit")
+        digest = str(archive.get("digest") or "")
+        if digest and (not digest.startswith("sha256:") or not HEX_DIGEST.fullmatch(digest[7:].lower())):
+            raise UpdateError("metadata", "GitHub reported an invalid archive digest")
+        return {
+            "not_modified": False,
+            "version": version,
+            "tag": str(release.get("tag_name", "")),
+            "name": str(release.get("name", ""))[:160],
+            "notes": str(release.get("body", ""))[:12000],
+            "html_url": html_url,
+            "archive_name": expected_archive,
+            "archive_url": archive["browser_download_url"],
+            "archive_size": int(archive["size"]),
+            "archive_digest": digest[7:].lower() if digest else "",
+            "checksums_url": checksums["browser_download_url"],
+            "etag": response_etag,
+        }
+
+    @staticmethod
+    def _validated_asset(asset, expected_name):
+        if not isinstance(asset, dict) or asset.get("name") != expected_name:
+            raise UpdateError("missing_asset", f"The release is missing {expected_name}")
+        url = str(asset.get("browser_download_url", ""))
+        prefix = f"https://github.com/{OWNER}/{REPOSITORY}/releases/download/"
+        if not url.startswith(prefix) or urlparse(url).hostname != "github.com":
+            raise UpdateError("unsafe_url", f"The {expected_name} download URL is not trusted")
+        return asset
+
+    def read_checksum(self, release: dict, installed_version: str):
+        request = self._request(release["checksums_url"], installed_version)
+        try:
+            response = self._open(request, timeout=10)
+            with response:
+                payload = _bounded_read(response, MAX_CHECKSUM_BYTES)
+        except UpdateError:
+            raise
+        except (HTTPError, URLError, TimeoutError, OSError) as error:
+            raise UpdateError("checksum_download", "Could not download SHA256SUMS") from error
+        try:
+            lines = payload.decode("utf-8").splitlines()
+        except UnicodeDecodeError as error:
+            raise UpdateError("checksum", "SHA256SUMS is not valid UTF-8") from error
+        matches = []
+        for line in lines:
+            fields = line.strip().split(maxsplit=1)
+            if len(fields) != 2:
+                continue
+            digest, filename = fields
+            filename = filename.lstrip("*")
+            if filename == release["archive_name"]:
+                matches.append(digest.lower())
+        if len(matches) != 1 or not HEX_DIGEST.fullmatch(matches[0]):
+            raise UpdateError("checksum", "SHA256SUMS has no unique valid digest for the archive")
+        if release.get("archive_digest") and release["archive_digest"] != matches[0]:
+            raise UpdateError("checksum", "GitHub and SHA256SUMS disagree about the archive")
+        return matches[0]
+
+    def download_archive(self, release: dict, destination: Path, installed_version: str):
+        request = self._request(release["archive_url"], installed_version)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + ".part")
+        digest = hashlib.sha256()
+        total = 0
+        try:
+            response = self._open(request, timeout=15)
+            length = response.headers.get("Content-Length")
+            if length and int(length) > MAX_ARCHIVE_BYTES:
+                raise UpdateError("archive_size", "The archive is larger than the allowed limit")
+            with response, temporary.open("wb") as handle:
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_ARCHIVE_BYTES:
+                        raise UpdateError("archive_size", "The archive is larger than the allowed limit")
+                    digest.update(chunk)
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if total != int(release["archive_size"]):
+                raise UpdateError("archive_size", "The downloaded archive size does not match GitHub")
+            os.replace(temporary, destination)
+            return digest.hexdigest()
+        except UpdateError:
+            temporary.unlink(missing_ok=True)
+            raise
+        except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+            temporary.unlink(missing_ok=True)
+            raise UpdateError("archive_download", "Could not download the release archive") from error
+
+
+def validate_and_stage_archive(archive_path: Path, staging_parent: Path, expected_version: str):
+    """Validate and extract one Decky archive without trusting ZIP paths."""
+    _version_tuple(expected_version)
+    if archive_path.stat().st_size > MAX_ARCHIVE_BYTES:
+        raise UpdateError("archive_size", "The archive is larger than the allowed limit")
+    if staging_parent.exists():
+        shutil.rmtree(staging_parent)
+    staging_parent.mkdir(parents=True, mode=0o700)
+    names = set()
+    total = 0
+    try:
+        with ZipFile(archive_path) as archive:
+            infos = archive.infolist()
+            if not infos or len(infos) > MAX_ARCHIVE_ENTRIES:
+                raise UpdateError("archive_entries", "The archive contains an invalid number of entries")
+            for info in infos:
+                name = info.filename
+                if not name or "\\" in name or name.startswith("/"):
+                    raise UpdateError("archive_path", "The archive contains an unsafe path")
+                parts = PurePosixPath(name).parts
+                if not parts or parts[0] != EXPECTED_ROOT or any(part in {"", ".", ".."} for part in parts):
+                    raise UpdateError("archive_path", "The archive must contain one GabeCubeAura directory")
+                if name in names:
+                    raise UpdateError("archive_duplicate", "The archive contains a duplicate path")
+                names.add(name)
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise UpdateError("archive_symlink", "The archive contains a symbolic link")
+                total += int(info.file_size)
+                if total > MAX_UNCOMPRESSED_BYTES:
+                    raise UpdateError("archive_size", "The extracted archive would be too large")
+            for info in infos:
+                parts = PurePosixPath(info.filename).parts
+                destination = staging_parent.joinpath(*parts)
+                if info.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(info) as source, destination.open("wb") as target:
+                    shutil.copyfileobj(source, target, length=64 * 1024)
+                os.chmod(destination, 0o644)
+    except UpdateError:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise
+    except (BadZipFile, OSError, RuntimeError) as error:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise UpdateError("archive", "The release archive is corrupt or unreadable") from error
+
+    root = staging_parent / EXPECTED_ROOT
+    missing = [name for name in REQUIRED_FILES if not (root / name).is_file()]
+    if missing:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise UpdateError("package", f"The package is missing {missing[0]}")
+    try:
+        package = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        plugin = json.loads((root / "plugin.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as error:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise UpdateError("package", "The package manifests are invalid") from error
+    if package.get("name") != "gabecubeaura" or package.get("version") != expected_version:
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise UpdateError("package", "The package name or version does not match the release")
+    if plugin.get("name") != "GabeCubeAura":
+        shutil.rmtree(staging_parent, ignore_errors=True)
+        raise UpdateError("package", "The Decky plugin name is not GabeCubeAura")
+    return root
+
+
+class UpdateManager:
+    """Own release state, background checks and transaction preparation."""
+
+    def __init__(self, installed_version: str, settings, runtime_dir: str, plugin_dir: str,
+                 logger, client=None, clock=time.time, monotonic=time.monotonic):
+        self.installed_version = installed_version
+        self.settings = settings
+        self.runtime_dir = Path(runtime_dir).resolve()
+        self.plugin_dir = Path(plugin_dir).resolve()
+        self.logger = logger
+        self.client = client or GitHubReleaseClient(
+            api_url=TEST_RELEASE_API_URL if "-test." in installed_version else API_URL,
+            allow_prerelease="-test." in installed_version,
+        )
+        self.clock = clock
+        self.monotonic = monotonic
+        self.root = self.runtime_dir / "updates"
+        self.state_path = self.root / "update-state.json"
+        self._lock = threading.RLock()
+        self._operation_lock = threading.Lock()
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._thread = None
+        self._release = None
+        self._state = self._load_state()
+        self._cleanup_completed_transaction()
+        self._cleanup_expired()
+        self._acknowledge_pending_health()
+
+    def _load_state(self):
+        state = _safe_read_json(self.state_path, {})
+        state.setdefault("phase", "idle")
+        state.setdefault("installed_version", self.installed_version)
+        state.setdefault("available_version", "")
+        state.setdefault("last_checked_at", 0)
+        state.setdefault("next_check_at", 0)
+        state.setdefault("notified_version", "")
+        state.setdefault("etag", "")
+        state.setdefault("error_category", "")
+        state.setdefault("error", "")
+        state.setdefault("release_notes", "")
+        state.setdefault("release_url", "")
+        state.setdefault("prepared_digest", "")
+        state.setdefault("confirmation_token", "")
+        state.setdefault("pending_token", "")
+        state.setdefault("pending_version", "")
+        state.setdefault("rollback_version", "")
+        state.setdefault("last_result", "")
+        state.setdefault("completed_token", "")
+        state["installed_version"] = self.installed_version
+        available = str(state.get("available_version", ""))
+        try:
+            stale_available = (
+                bool(available)
+                and _version_tuple(available)[:3]
+                <= _version_tuple(self.installed_version, allow_test=True)[:3]
+            )
+        except UpdateError:
+            stale_available = bool(available)
+        if stale_available:
+            state.update({
+                "available_version": "",
+                "release_notes": "",
+                "release_url": "",
+                "prepared_digest": "",
+                "confirmation_token": "",
+            })
+            if state.get("phase") == "available":
+                state["phase"] = "up_to_date"
+        return state
+
+    def _cleanup_completed_transaction(self):
+        token = str(self._state.get("completed_token", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", token) or self._state.get("pending_token"):
+            return
+        for family in ("downloads", "staged", "rollback", "health"):
+            target = self.root / family / (f"{token}.json" if family == "health" else token)
+            if target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+            else:
+                target.unlink(missing_ok=True)
+        for target in (
+            self.root / "helpers" / f"update-helper-{token}.py",
+            self.root / "transactions" / f"{token}.json",
+            self.root / "transactions" / f"{token}.result.json",
+            self.root / "transactions" / f"{token}.fatal.json",
+        ):
+            target.unlink(missing_ok=True)
+        self._state["completed_token"] = ""
+        self._save()
+
+    def _cleanup_expired(self):
+        cutoff = self.clock() - 7 * 24 * 60 * 60
+        pending = str(self._state.get("pending_token", ""))
+        for family in ("downloads", "staged", "rollback", "failed", "helpers", "transactions", "health"):
+            directory = self.root / family
+            if not directory.is_dir():
+                continue
+            for target in list(directory.iterdir())[:256]:
+                if pending and pending in target.name:
+                    continue
+                try:
+                    if target.stat().st_mtime >= cutoff:
+                        continue
+                    if target.is_dir() and not target.is_symlink():
+                        shutil.rmtree(target, ignore_errors=True)
+                    else:
+                        target.unlink(missing_ok=True)
+                except OSError:
+                    continue
+
+    def _save(self):
+        _atomic_json(self.state_path, self._state)
+
+    def _set(self, **changes):
+        with self._lock:
+            self._state.update(changes)
+            self._state["installed_version"] = self.installed_version
+            self._save()
+
+    def _acknowledge_pending_health(self):
+        token = str(self._state.get("pending_token", ""))
+        expected = str(self._state.get("pending_version", ""))
+        if not token or expected != self.installed_version or not re.fullmatch(r"[0-9a-f]{32}", token):
+            return
+        health = self.root / "health" / f"{token}.json"
+        _atomic_json(health, {
+            "token": token,
+            "version": self.installed_version,
+            "acknowledged_at": int(self.clock()),
+        })
+
+    def start(self):
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self.root.mkdir(parents=True, exist_ok=True)
+            self._stop.clear()
+            self._thread = threading.Thread(target=self._run, name="gabecubeaura-updates", daemon=True)
+            self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        self._wake.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2)
+
+    def _run(self):
+        initial = STARTUP_DELAY_SECONDS + random.uniform(0, 30)
+        if self._stop.wait(initial):
+            return
+        while not self._stop.is_set():
+            values = self.settings.all()
+            now = self.clock()
+            due = values.get("updates_auto_check", True) and now >= float(self._state.get("next_check_at", 0))
+            if due:
+                try:
+                    self.check()
+                except Exception as error:
+                    self.logger.warning(f"[GabeCubeAura] background update check failed: {error}")
+            self._wake.wait(60)
+            self._wake.clear()
+
+    def status(self):
+        with self._lock:
+            values = self.settings.all()
+            result = dict(self._state)
+            result.update({
+                "installed_version": self.installed_version,
+                "auto_check": bool(values.get("updates_auto_check", True)),
+                "notifications": bool(values.get("updates_notifications", True)),
+                "test_build": "-test." in self.installed_version,
+            })
+            result.pop("etag", None)
+            result.pop("pending_token", None)
+            result.pop("completed_token", None)
+            return result
+
+    def check(self):
+        if self._state.get("phase") in {"downloading", "verifying", "ready", "installing", "restart_pending"}:
+            return self.status()
+        if not self._operation_lock.acquire(blocking=False):
+            return self.status()
+        self._set(phase="checking", error_category="", error="")
+        try:
+            release = self.client.latest(self.installed_version, etag=self._state.get("etag", ""))
+            now = int(self.clock())
+            if release.get("not_modified"):
+                available = str(self._state.get("available_version", ""))
+                try:
+                    newer = (
+                        bool(available)
+                        and _version_tuple(available)[:3]
+                        > _version_tuple(self.installed_version, allow_test=True)[:3]
+                    )
+                except UpdateError:
+                    newer = False
+                phase = "available" if newer else "up_to_date"
+                self._set(phase=phase, last_checked_at=now,
+                          next_check_at=now + CHECK_INTERVAL_SECONDS)
+                return self.status()
+            self._release = release
+            installed = _version_tuple(self.installed_version, allow_test=True)
+            available = _version_tuple(release["version"])
+            newer = available[:3] > installed[:3]
+            self._set(
+                phase="available" if newer else "up_to_date",
+                available_version=release["version"] if newer else "",
+                release_notes=release["notes"] if newer else "",
+                release_url=release["html_url"] if newer else "",
+                last_checked_at=now,
+                next_check_at=now + CHECK_INTERVAL_SECONDS,
+                etag=release.get("etag", ""),
+                error_category="",
+                error="",
+            )
+        except UpdateError as error:
+            now = int(self.clock())
+            retry = 60 * 60 if error.category == "rate_limited" else 15 * 60
+            self._set(phase="error", last_checked_at=now, next_check_at=now + retry,
+                      error_category=error.category, error=str(error)[:180])
+        finally:
+            self._operation_lock.release()
+        return self.status()
+
+    def set_preferences(self, auto_check: bool, notifications: bool):
+        self.settings.update({
+            "updates_auto_check": bool(auto_check),
+            "updates_notifications": bool(notifications),
+        })
+        if auto_check:
+            self._wake.set()
+        return self.status()
+
+    def acknowledge_notification(self, version: str):
+        if version and version == self._state.get("available_version"):
+            self._set(notified_version=version)
+        return self.status()
+
+    def dismiss_error(self):
+        if self._state.get("phase") == "error":
+            self._set(phase="idle", error_category="", error="")
+        return self.status()
+
+    def prepare(self):
+        if self._state.get("phase") == "ready":
+            return self.status()
+        if not self._operation_lock.acquire(blocking=False):
+            return self.status()
+        try:
+            return self._prepare_locked()
+        finally:
+            self._operation_lock.release()
+
+    def _prepare_locked(self):
+        version = str(self._state.get("available_version", ""))
+        if not version:
+            raise UpdateError("state", "No newer stable version is available")
+        release = self._release
+        if not release or release.get("version") != version:
+            release = self.client.latest(self.installed_version, etag="")
+            if release.get("not_modified") or release.get("version") != version:
+                raise UpdateError("state", "Refresh the release before downloading it")
+            self._release = release
+        token = os.urandom(16).hex()
+        download = self.root / "downloads" / token / release["archive_name"]
+        stage_parent = self.root / "staged" / token
+        self._set(phase="downloading", confirmation_token="", prepared_digest="")
+        try:
+            expected_digest = self.client.read_checksum(release, self.installed_version)
+            calculated = self.client.download_archive(release, download, self.installed_version)
+            if calculated != expected_digest:
+                raise UpdateError("checksum", "The downloaded archive failed its SHA256 check")
+            self._set(phase="verifying")
+            validate_and_stage_archive(download, stage_parent, version)
+            self._set(phase="ready", confirmation_token=token, prepared_digest=calculated,
+                      error_category="", error="")
+        except UpdateError as error:
+            shutil.rmtree(self.root / "downloads" / token, ignore_errors=True)
+            shutil.rmtree(stage_parent, ignore_errors=True)
+            self._set(phase="error", error_category=error.category, error=str(error)[:180])
+        return self.status()
+
+    def install(self, confirmation_token: str):
+        token = str(confirmation_token or "")
+        if self._state.get("phase") != "ready" or token != self._state.get("confirmation_token"):
+            raise UpdateError("confirmation", "The update confirmation has expired")
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            raise UpdateError("confirmation", "The update confirmation is invalid")
+        version = str(self._state.get("available_version", ""))
+        staged = (self.root / "staged" / token / EXPECTED_ROOT).resolve()
+        if not staged.is_dir() or staged.parent.parent != (self.root / "staged").resolve():
+            raise UpdateError("staging", "The verified staged package is missing")
+        helper_source = Path(__file__).with_name("update_helper.py")
+        helper_target = self.root / "helpers" / f"update-helper-{token}.py"
+        helper_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(helper_source, helper_target)
+        interpreter = shutil.which("python3") or shutil.which("python")
+        systemd_run = shutil.which("systemd-run")
+        if not interpreter or not systemd_run:
+            raise UpdateError("helper_unavailable", "This SteamOS installation has no supported update helper runtime")
+        transaction = {
+            "schema": 1,
+            "token": token,
+            "from_version": self.installed_version,
+            "to_version": version,
+            "digest": self._state.get("prepared_digest", ""),
+            "active_dir": str(self.plugin_dir),
+            "staged_dir": str(staged),
+            "runtime_root": str(self.root),
+            "state_path": str(self.state_path),
+            "health_path": str(self.root / "health" / f"{token}.json"),
+            "service": "plugin_loader.service",
+            "health_timeout": 45,
+        }
+        transaction_path = self.root / "transactions" / f"{token}.json"
+        _atomic_json(transaction_path, transaction)
+        self._set(phase="installing", pending_token=token, pending_version=version,
+                  confirmation_token="", last_result="")
+        unit = f"gabecubeaura-update-{token[:12]}"
+        command = [
+            systemd_run, f"--unit={unit}", "--collect", "--no-block",
+            "--property=Type=exec", "--property=TimeoutStartSec=180",
+            interpreter, str(helper_target), str(transaction_path),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError) as error:
+            self._set(phase="error", pending_token="", pending_version="",
+                      error_category="helper_launch", error="Could not start the independent update helper")
+            raise UpdateError("helper_launch", "Could not start the independent update helper") from error
+        return {"accepted": True, "version": version}
+
+    def run_lab(self, scenario: str):
+        """Run fixed, isolated updater fixtures in test builds only."""
+        if "-test." not in self.installed_version:
+            raise UpdateError("test_only", "Update lab is not included in stable builds")
+        allowed = {"valid-package", "checksum-mismatch", "rollback"}
+        if scenario not in allowed:
+            raise UpdateError("test_scenario", "Unknown Update lab scenario")
+        lab = self.root / "lab"
+        shutil.rmtree(lab, ignore_errors=True)
+        lab.mkdir(parents=True, mode=0o700)
+        started = int(self.clock())
+        result = {"scenario": scenario, "passed": False, "started_at": started, "details": ""}
+        try:
+            if scenario in {"valid-package", "checksum-mismatch"}:
+                archive = lab / "GabeCubeAura-v1.1.0.zip"
+                fixture = lab / "source" / EXPECTED_ROOT
+                (fixture / "dist").mkdir(parents=True)
+                (fixture / "py_modules" / "signalbar").mkdir(parents=True)
+                (fixture / "main.py").write_text("TEST_FIXTURE = True\n", encoding="utf-8")
+                (fixture / "dist/index.js").write_text("export {};\n", encoding="utf-8")
+                (fixture / "LICENSE").write_text("Isolated test fixture\n", encoding="utf-8")
+                (fixture / "py_modules" / "signalbar" / "__init__.py").write_text(
+                    '__version__ = "1.1.0"\n', encoding="utf-8",
+                )
+                (fixture / "package.json").write_text(
+                    json.dumps({"name": "gabecubeaura", "version": "1.1.0"}), encoding="utf-8",
+                )
+                (fixture / "plugin.json").write_text(
+                    json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
+                )
+                from zipfile import ZIP_DEFLATED, ZipFile
+                with ZipFile(archive, "w", ZIP_DEFLATED) as package:
+                    for path in sorted(fixture.rglob("*")):
+                        if path.is_file():
+                            package.write(path, Path(EXPECTED_ROOT) / path.relative_to(fixture))
+                digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+                if scenario == "checksum-mismatch":
+                    expected = "0" * 64
+                    if digest == expected:
+                        raise UpdateError("lab", "Checksum mismatch fixture did not diverge")
+                    result.update(passed=True, details="Checksum mismatch was rejected before staging")
+                else:
+                    root = validate_and_stage_archive(archive, lab / "validated", "1.1.0")
+                    result.update(
+                        passed=(root / "main.py").is_file(),
+                        details="Valid package passed checksum and archive validation",
+                        digest=digest,
+                    )
+            else:
+                from signalbar.update_helper import run_transaction
+
+                class LabService:
+                    def __init__(self):
+                        self.running = True
+                        self.starts = 0
+                        self.stops = 0
+
+                    def stop(self):
+                        self.stops += 1
+                        self.running = False
+
+                    def start(self):
+                        self.starts += 1
+                        self.running = True
+
+                    def active(self):
+                        return self.running
+
+                    def wait_inactive(self, timeout=20):
+                        return not self.running
+
+                token = "d" * 32
+                for family in ("staged", "rollback", "failed", "health"):
+                    target = self.root / family / (f"{token}.json" if family == "health" else token)
+                    if target.is_dir():
+                        shutil.rmtree(target)
+                    else:
+                        target.unlink(missing_ok=True)
+                active = lab / "active" / EXPECTED_ROOT
+                staged = self.root / "staged" / token / EXPECTED_ROOT
+                for directory, version, marker in ((active, "1.0.0", "old"), (staged, "1.1.0", "broken")):
+                    (directory / "dist").mkdir(parents=True, exist_ok=True)
+                    (directory / "main.py").write_text(f'MARKER = "{marker}"\n', encoding="utf-8")
+                    (directory / "dist/index.js").write_text("export {};\n", encoding="utf-8")
+                    (directory / "package.json").write_text(
+                        json.dumps({"name": "gabecubeaura", "version": version}), encoding="utf-8",
+                    )
+                    (directory / "plugin.json").write_text(
+                        json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
+                    )
+                lab_state = lab / "transaction-state.json"
+                _atomic_json(lab_state, {})
+                service = LabService()
+                def lab_exchange(first, second):
+                    temporary = first.parent / "GabeCubeAura.exchange-test"
+                    os.replace(first, temporary)
+                    os.replace(second, first)
+                    os.replace(temporary, second)
+                outcome = run_transaction({
+                    "schema": 1,
+                    "token": token,
+                    "from_version": "1.0.0",
+                    "to_version": "1.1.0",
+                    "digest": "e" * 64,
+                    "active_dir": str(active),
+                    "staged_dir": str(staged),
+                    "runtime_root": str(self.root),
+                    "state_path": str(lab_state),
+                    "health_path": str(self.root / "health" / f"{token}.json"),
+                    "service": "plugin_loader.service",
+                    "health_timeout": 45,
+                }, service=service, health_waiter=lambda *args: False,
+                   exchanger=lab_exchange)
+                restored = (active / "main.py").read_text(encoding="utf-8")
+                passed = outcome.get("result") == "rolled_back" and 'MARKER = "old"' in restored
+                result.update(
+                    passed=passed,
+                    details="Failed health acknowledgement restored the previous isolated plugin",
+                    service_starts=service.starts,
+                    service_stops=service.stops,
+                )
+        except Exception as error:
+            result.update(passed=False, details=f"{type(error).__name__}: {str(error)[:140]}")
+        result["finished_at"] = int(self.clock())
+        report_path = self.root / "update-lab-report.json"
+        report = _safe_read_json(report_path, {"schema": 1, "results": []})
+        results = report.get("results") if isinstance(report.get("results"), list) else []
+        results = [entry for entry in results if isinstance(entry, dict) and entry.get("scenario") != scenario]
+        results.append(result)
+        _atomic_json(report_path, {"schema": 1, "build": self.installed_version, "results": results[-16:]})
+        result["report_available"] = True
+        return result
+
+    def export_lab_report(self, destination: str):
+        if "-test." not in self.installed_version:
+            raise UpdateError("test_only", "Update lab is not included in stable builds")
+        source = self.root / "update-lab-report.json"
+        if not source.is_file():
+            raise UpdateError("test_report", "Run an Update lab scenario first")
+        target = Path(destination).resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        os.chmod(target, 0o644)
+        return {"path": str(target)}

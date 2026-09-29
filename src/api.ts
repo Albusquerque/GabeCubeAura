@@ -1,5 +1,5 @@
 import { callable } from "@decky/api";
-import type { ArtworkPayload, Status, WeatherLocation, WeatherCondition } from "./types";
+import type { ArtworkPayload, Status, UpdateLabResult, UpdateStatus, WeatherLocation, WeatherCondition } from "./types";
 import type { ControllerTelemetry } from "./controller_monitor";
 
 export const getStatus = callable<[], Status>("get_status");
@@ -44,6 +44,15 @@ export const previewController = callable<[kind: string, variant: string], boole
 export const searchWeatherCities = callable<[query: string], { results: WeatherLocation[]; error: string }>("search_weather_cities");
 export const previewWeather = callable<[condition: WeatherCondition, variant: number], boolean>("preview_weather");
 export const stopWeatherPreview = callable<[], boolean>("stop_weather_preview");
+export const getUpdateStatus = callable<[], UpdateStatus>("get_update_status");
+export const checkForUpdates = callable<[], UpdateStatus>("check_for_updates");
+export const prepareUpdate = callable<[], UpdateStatus>("prepare_update");
+export const installPreparedUpdate = callable<[confirmationToken: string], { accepted: boolean; version: string }>("install_prepared_update");
+export const setUpdatePreferences = callable<[autoCheck: boolean, notifications: boolean], UpdateStatus>("set_update_preferences");
+export const acknowledgeUpdateNotification = callable<[version: string], UpdateStatus>("acknowledge_update_notification");
+export const dismissUpdateError = callable<[], UpdateStatus>("dismiss_update_error");
+export const runUpdateLabScenario = callable<[scenario: UpdateLabResult["scenario"]], UpdateLabResult>("run_update_lab_scenario");
+export const exportUpdateTestReport = callable<[], { path: string }>("export_update_test_report");
 
 export interface ConfigurationExportResult {
   path: string;

@@ -6,11 +6,11 @@ Prepared on 2026-09-27 by Albus Querque for GabeCubeAura 1.0.0.
 
 - Name: GabeCubeAura
 - Author: Albus Querque
-- Repository: `https://github.com/Albusquerque/GabeCubeAura`
+- Repository: `https://github.com/Alyenax/GabeCubeAura`
 - Version: `1.0.0`
 - License: BSD 3-Clause
 - Description: Artwork, custom effects, weather and live status lighting for the Steam Machine light bar.
-- Image: `https://raw.githubusercontent.com/Albusquerque/GabeCubeAura/main/docs/media/gabecubeaura-product-hero.png`
+- Image: `https://raw.githubusercontent.com/Alyenax/GabeCubeAura/main/docs/media/gabecubeaura-product-hero.png`
 
 ## Proposed pull request summary
 
@@ -73,12 +73,12 @@ Fork `SteamDeckHomebrew/decky-plugin-database`, create a submission branch and
 add this repository as a submodule at the exact reviewed commit:
 
 ```bash
-git clone https://github.com/Albusquerque/decky-plugin-database.git
+git clone https://github.com/Alyenax/decky-plugin-database.git
 cd decky-plugin-database
 git remote add upstream https://github.com/SteamDeckHomebrew/decky-plugin-database.git
 git fetch upstream
 git switch -c add/gabecubeaura upstream/main
-git submodule add https://github.com/Albusquerque/GabeCubeAura.git plugins/GabeCubeAura
+git submodule add https://github.com/Alyenax/GabeCubeAura.git plugins/GabeCubeAura
 git -C plugins/GabeCubeAura checkout <reviewed-commit>
 git add .gitmodules plugins/GabeCubeAura
 git commit -m "Add GabeCubeAura"

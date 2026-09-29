@@ -18,6 +18,8 @@ from signalbar.settings.export import (  # noqa: E402
 )
 from signalbar.steam import get_library_artwork  # noqa: E402
 from signalbar.providers.weather import search_cities  # noqa: E402
+from signalbar import __version__  # noqa: E402
+from signalbar.updates import UpdateManager  # noqa: E402
 
 
 class Plugin:
@@ -52,15 +54,24 @@ class Plugin:
             os.environ.get("DECKY_USER_HOME"),
         )
         self.engine.start()
+        self.update_manager = UpdateManager(
+            __version__, self.engine.settings,
+            decky.DECKY_PLUGIN_RUNTIME_DIR,
+            decky.DECKY_PLUGIN_DIR,
+            decky.logger,
+        )
+        self.update_manager.start()
         if migrated_from:
             decky.logger.info(f"[GabeCubeAura] imported legacy {migrated_from} settings")
         decky.logger.info("[GabeCubeAura] loaded")
 
     async def _unload(self):
+        self.update_manager.stop()
         self.engine.stop()
         decky.logger.info("[GabeCubeAura] unloaded; LED ownership released")
 
     async def _uninstall(self):
+        self.update_manager.stop()
         self.engine.stop()
 
     async def get_status(self):
@@ -206,3 +217,39 @@ class Plugin:
 
     async def stop_weather_preview(self):
         return self.engine.stop_weather_preview()
+
+    async def get_update_status(self):
+        return self.update_manager.status()
+
+    async def check_for_updates(self):
+        return await asyncio.get_running_loop().run_in_executor(None, self.update_manager.check)
+
+    async def prepare_update(self):
+        return await asyncio.get_running_loop().run_in_executor(None, self.update_manager.prepare)
+
+    async def install_prepared_update(self, confirmation_token: str):
+        return self.update_manager.install(confirmation_token)
+
+    async def set_update_preferences(self, auto_check: bool, notifications: bool):
+        return self.update_manager.set_preferences(auto_check, notifications)
+
+    async def acknowledge_update_notification(self, version: str):
+        return self.update_manager.acknowledge_notification(version)
+
+    async def dismiss_update_error(self):
+        return self.update_manager.dismiss_error()
+
+    async def run_update_lab_scenario(self, scenario: str):
+        return await asyncio.get_running_loop().run_in_executor(
+            None, self.update_manager.run_lab, scenario,
+        )
+
+    async def export_update_test_report(self):
+        user_home = os.environ.get("DECKY_USER_HOME", "")
+        if user_home:
+            destination = os.path.join(user_home, "Documents", "GabeCubeAura-update-test-report.json")
+        else:
+            destination = os.path.join(
+                decky.DECKY_PLUGIN_RUNTIME_DIR, "GabeCubeAura-update-test-report.json",
+            )
+        return self.update_manager.export_lab_report(destination)
