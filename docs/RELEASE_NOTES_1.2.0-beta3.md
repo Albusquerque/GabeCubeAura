@@ -9,7 +9,7 @@ bridge for The Witcher 3: Wild Hunt: Complete Edition / Remastered.
 - Screen Sync maps the live Gamescope picture to 17 LEDs in Panorama or
   Ambient mode and restarts cleanly when the running game changes.
 - Controller display supports one to four fixed battery seats, with automatic
-  mirrored layouts for two and four players and editable P1–P4 colours.
+  mirrored layouts for two and four players and editable P1-P4 colours.
 - The experimental Witcher 3 Lab reacts to vitality, stamina, toxicity,
   adrenaline, combat and Sign casts from the optional WitcherScript bridge.
 - The Witcher page can install, verify, repair or safely remove the bundled
