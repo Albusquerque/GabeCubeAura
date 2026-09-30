@@ -9,8 +9,8 @@ class PackagingTests(unittest.TestCase):
             "main.py", "plugin.json", "package.json", "LICENSE",
             "THIRD_PARTY_NOTICES.md", "scripts/package_plugin.py",
             "docs/SCREEN_SYNC.md", "docs/SCREEN_SYNC_INTEGRATION_PLAN.md",
-            "docs/BETA_TEST_PLAN_1.2.0-beta3.md",
-            "docs/RELEASE_NOTES_1.2.0-beta3.md",
+            "docs/BETA_TEST_PLAN_1.2.0-beta.3.md",
+            "docs/RELEASE_NOTES_1.2.0-beta.3.md",
             "scripts/package_witcher_mod.py",
             "witcher_mod/README.md",
             "witcher_mod/mods/modGabeCubeAuraTelemetry/content/scripts/local/gca_telemetry.ws",
@@ -35,7 +35,7 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.2.0-beta3"', package)
+        self.assertIn('"version": "1.2.0-beta.3"', package)
         self.assertIn('"author": "Alyenax"', manifest)
         self.assertIn('"author": "Alyenax"', package)
         self.assertIn('label="Colour meaning"', panel)

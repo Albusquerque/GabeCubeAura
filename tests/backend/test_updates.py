@@ -377,9 +377,9 @@ class UpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             archive = base / "beta.zip"
-            write_archive(archive, "1.2.0-beta3")
+            write_archive(archive, "1.2.0-beta.3")
             settings = SettingsStore(str(base / "settings/config.json"))
-            client = FakeClient(archive, "1.2.0-beta3")
+            client = FakeClient(archive, "1.2.0-beta.3")
             manager = UpdateManager(
                 "1.1.3", settings, str(base / "runtime"),
                 str(base / "plugins/GabeCubeAura"), FakeLogger(), client=client,
@@ -389,7 +389,7 @@ class UpdateTests(unittest.TestCase):
 
             self.assertEqual(status["channel"], "beta")
             self.assertEqual(status["phase"], "available")
-            self.assertEqual(status["available_version"], "1.2.0-beta3")
+            self.assertEqual(status["available_version"], "1.2.0-beta.3")
             self.assertFalse(status["return_to_stable"])
             self.assertEqual(len(client.calls), 1)
             prepared = manager.prepare()
@@ -403,7 +403,7 @@ class UpdateTests(unittest.TestCase):
             settings = SettingsStore(str(base / "settings/config.json"))
             settings.update({"updates_channel": "beta"})
             manager = UpdateManager(
-                "1.2.0-beta3", settings, str(base / "runtime"),
+                "1.2.0-beta.3", settings, str(base / "runtime"),
                 str(base / "plugins/GabeCubeAura"), FakeLogger(),
                 client=FakeClient(archive, "1.1.3"),
             )

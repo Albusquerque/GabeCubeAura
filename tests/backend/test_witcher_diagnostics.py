@@ -44,7 +44,7 @@ class WitcherDiagnosticsTests(unittest.TestCase):
                 encoding="utf-8",
             )
             status = {
-                "version": "1.2.0-beta3",
+                "version": "1.2.0-beta.3",
                 "game": {"appid": 292030, "title": "The Witcher 3"},
                 "owner": "Valve", "provider": "none",
                 "suspension_reason": "test", "error": "",

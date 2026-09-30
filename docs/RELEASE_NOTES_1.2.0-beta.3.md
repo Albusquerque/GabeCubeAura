@@ -1,4 +1,4 @@
-# GabeCubeAura 1.2.0-beta3
+# GabeCubeAura 1.2.0-beta.3
 
 This opt-in public preview adds real-time Screen Sync, fixed layouts for up to
 four controllers, richer night Weather scenes and an experimental live HUD
@@ -50,6 +50,6 @@ the saved Customization+ fallback during the native game-launch handoff.
 
 ## Install and rollback
 
-Install `GabeCubeAura-v1.2.0-beta3.zip` through Decky Developer settings without
+Install `GabeCubeAura-v1.2.0-beta.3.zip` through Decky Developer settings without
 extracting it, or select Beta from GabeCubeAura's Updates page. Keep the stable
 v1.1.3 ZIP and a configuration export available for rollback.

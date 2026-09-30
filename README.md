@@ -1,6 +1,6 @@
 # GabeCubeAura
 
-**GabeCubeAura 1.2.0-beta3 adds an experimental The Witcher 3 Complete Edition
+**GabeCubeAura 1.2.0-beta.3 adds an experimental The Witcher 3 Complete Edition
 HUD laboratory to real-time screen colours, richer night weather and fixed
 battery seats for the official Steam Machine's 17-pixel light bar.**
 
@@ -9,11 +9,11 @@ expressive. This beta combines the complete v1.1.3 feature set with live
 in-game colour, optional Steam screensaver matching and 8 night-weather
 transpositions. Existing GabeCubeAura and SignalBar settings remain compatible.
 
-> **Beta software:** 1.2.0-beta3 is a public prerelease for testing. Keep a
+> **Beta software:** 1.2.0-beta.3 is a public prerelease for testing. Keep a
 > configuration export and the current stable ZIP available for rollback.
 
-[Download GabeCubeAura 1.2.0-beta3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta3/GabeCubeAura-v1.2.0-beta3.zip)
-· [Release notes](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.2.0-beta3)
+[Download GabeCubeAura 1.2.0-beta.3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip)
+· [Release notes](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.2.0-beta.3)
 · [Latest stable v1.1.3](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.3)
 
 ## The Witcher 3 experimental HUD lab
@@ -110,7 +110,7 @@ Home and games, then let
 temporary launch, playtime, and Steam moments take the stage before the
 selected display returns.
 
-[Download GabeCubeAura 1.2.0-beta3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta3/GabeCubeAura-v1.2.0-beta3.zip)
+[Download GabeCubeAura 1.2.0-beta.3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip)
 
 GabeCubeAura is the new name of SignalBar. On first launch it imports existing
 SignalBar settings and artwork caches. Existing users keep their configuration.
@@ -328,7 +328,7 @@ seconds, the previous plugin version is restored automatically.
 The Stable channel is the default and ignores GitHub prereleases. The optional
 Beta channel accepts published beta releases as well as later stable releases.
 Both use the same verification and confirmation flow. Changing the selector to
-**Beta** starts a fresh release check immediately, so 1.2.0-beta3 can appear
+**Beta** starts a fresh release check immediately, so 1.2.0-beta.3 can appear
 without waiting for the next automatic interval. Returning to Stable explicitly
 offers the current stable package even when its version number is lower than an
 installed beta.
@@ -337,7 +337,7 @@ installed beta.
 
 1. Install [Decky Loader](https://decky.xyz/).
 2. Download
-   [`GabeCubeAura-v1.2.0-beta3.zip`](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta3/GabeCubeAura-v1.2.0-beta3.zip).
+   [`GabeCubeAura-v1.2.0-beta.3.zip`](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip).
    Do not extract it. The latest stable release remains v1.1.3.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
@@ -500,17 +500,17 @@ corepack pnpm build
 corepack pnpm package
 ```
 
-The installable archives are written to `out/GabeCubeAura-v1.2.0-beta3.zip` and
+The installable archives are written to `out/GabeCubeAura-v1.2.0-beta.3.zip` and
 `out/GabeCubeAura.zip`. Their identical SHA256 values are written to
 `out/SHA256SUMS`.
 
-See [the GabeCubeAura 1.2.0-beta3 release notes](docs/RELEASE_NOTES_1.2.0-beta3.md)
+See [the GabeCubeAura 1.2.0-beta.3 release notes](docs/RELEASE_NOTES_1.2.0-beta.3.md)
 for the complete beta scope and known limits.
 
 See [the Screen Sync implementation notes](docs/SCREEN_SYNC.md)
 for the implementation status, safety model and physical test checklist.
 
-See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.0-beta3.md) before using
+See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.0-beta.3.md) before using
 the build as a daily driver.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and

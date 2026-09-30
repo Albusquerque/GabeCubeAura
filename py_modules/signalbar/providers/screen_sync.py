@@ -24,7 +24,7 @@ CAPTURE_WIDTH = 34
 CAPTURE_HEIGHT = 18
 BYTES_PER_PIXEL = 4
 FRAME_BYTES = CAPTURE_WIDTH * CAPTURE_HEIGHT * BYTES_PER_PIXEL
-CAPTURE_REVISION = "beta3-session-launch-v3"
+CAPTURE_REVISION = "beta.3-session-launch-v3"
 
 VALID_STYLES = {"panorama", "ambient"}
 VALID_REACTIVITY = {"calm", "balanced", "fast"}

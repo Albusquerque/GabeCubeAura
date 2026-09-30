@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0-beta3 - 2026-09-30
+## 1.2.0-beta.3 - 2026-09-30
 
 - Add an experimental The Witcher 3 HUD Lab for Steam AppID `292030`, with live
   vitality, stamina, toxicity, adrenaline, combat and Sign reactions from the

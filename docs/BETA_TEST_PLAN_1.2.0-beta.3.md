@@ -1,4 +1,4 @@
-# GabeCubeAura 1.2.0-beta3 validation plan
+# GabeCubeAura 1.2.0-beta.3 validation plan
 
 > **Ownership warning:** preserve and review
 > [`IMPORTANT_LED_OWNERSHIP_REGRESSION.md`](../IMPORTANT_LED_OWNERSHIP_REGRESSION.md).
@@ -9,14 +9,14 @@ This plan separates software verification from physical Steam Machine results.
 ## Before installation
 
 1. Keep the beta2 or stable ZIP and export the current GabeCubeAura settings.
-2. Compare the beta3 archive checksum with `out/SHA256SUMS`.
+2. Compare the beta.3 archive checksum with `out/SHA256SUMS`.
 3. Disable unknown light-bar writers; StripMine may remain enabled for the
    explicit handoff tests.
 4. Install the ZIP through Decky Developer settings without extracting it.
 
 ## Basic regression
 
-1. Confirm the plugin reports `1.2.0-beta3` and the beta2 settings survived.
+1. Confirm the plugin reports `1.2.0-beta.3` and the beta2 settings survived.
 2. Preview Customization+, Artwork, Weather, Screen Sync, Controllers and one
    Light Event.
 3. Repeat the beta2 controller, update-channel, screensaver, recording and

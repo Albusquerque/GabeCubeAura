@@ -30,7 +30,7 @@ Two separate changes explain the failure:
      signals and harmless startup/brightness churn. In the latter case every
      physical output could remain blocked indefinitely.
 
-The Witcher beta3 work did not introduce the original fault. It inherited the
+The Witcher beta.3 work did not introduce the original fault. It inherited the
 beta1 ownership path and made the distinction between a simulated frame and a
 physical write especially visible.
 
@@ -58,7 +58,7 @@ the hard-priority path alive. Tests and diagnostics must therefore distinguish
 
 ## Required correction
 
-Any beta3 package or branch derived from the original beta1 base must retain
+Any beta.3 package or branch derived from the original beta1 base must retain
 all of these fixes together:
 
 - save the current Valve `effect` and `enabled` state;
