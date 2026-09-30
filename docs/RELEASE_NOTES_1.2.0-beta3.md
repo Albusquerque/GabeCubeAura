@@ -1,20 +1,19 @@
 # GabeCubeAura 1.2.0-beta3
 
-This public prerelease carries every beta2 controller, Screen Sync, Weather and
-update-channel change into a dedicated The Witcher 3 physical-light experiment.
+This opt-in public preview adds real-time Screen Sync, fixed layouts for up to
+four controllers, richer night Weather scenes and an experimental live HUD
+bridge for The Witcher 3: Wild Hunt — Complete Edition / Remastered.
 
 ## Beta update channel and documentation
 
-- Publish `v1.2.0-beta3` as a GitHub prerelease with the exact versioned ZIP and
-  `SHA256SUMS`; Stable remains the default channel.
-- Start a fresh check immediately when Beta is selected, bypass stale ETags on
-  manual checks, and preserve the verified confirmation and rollback flow.
+- Stable remains the default. Selecting Beta starts a fresh check immediately
+  and makes this prerelease available without waiting for the next interval.
+- Every update still requires confirmation and verifies the exact versioned
+  ZIP, its package metadata and `SHA256SUMS` before installation.
 - Keep the updater's helper isolated from Decky's bundled runtime libraries and
   recover completed or superseded transactions after restart.
-- Accept both historical `-beta.3` and package-style `-beta3` tags while
-  requiring every beta tag to be marked as a GitHub prerelease.
-- Add target-hardware GIFs for Screen Sync and the experimental Witcher Lab,
-  plus a four-controller animation generated from the updated Concept Lab.
+- Add target-hardware demonstrations for Screen Sync and the experimental
+  Witcher Lab, plus a four-controller animation generated from the Concept Lab.
 
 ## Screen Sync and session fixes
 
@@ -133,8 +132,8 @@ controls remain available when live telemetry is absent or older than 1.5 second
 ## Installation
 
 Install `GabeCubeAura-v1.2.0-beta3.zip` through Decky Developer settings without
-extracting it. Keep the beta2 or stable ZIP and a configuration export available
-for rollback.
+extracting it. Keep the current stable v1.1.3 ZIP and a configuration export
+available for rollback.
 
 For the Witcher bridge, put `-net -debugscripts` in Steam's Launch Options and
 set `DebugScriptsForceFlush=true` under `[Scripts]` in `dx12user.settings` or
