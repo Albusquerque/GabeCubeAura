@@ -9,9 +9,12 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 from signalbar.settings import SettingsStore
 from signalbar.update_helper import run_transaction
 from signalbar.updates import (
+    BETA_VERSION,
     GitHubReleaseClient,
+    RELEASES_API_URL,
     UpdateError,
     UpdateManager,
+    _version_order,
     _version_tuple,
     validate_and_stage_archive,
 )
@@ -45,25 +48,27 @@ def write_archive(path: Path, version="1.1.0"):
 
 
 class FakeClient:
-    def __init__(self, archive: Path):
+    def __init__(self, archive: Path, version="1.1.0"):
         self.archive = archive
         self.digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        self.calls = []
         self.release = {
             "not_modified": False,
-            "version": "1.1.0",
-            "tag": "v1.1.0",
-            "name": "GabeCubeAura 1.1.0",
+            "version": version,
+            "tag": f"v{version}",
+            "name": f"GabeCubeAura {version}",
             "notes": "Safe update",
-            "html_url": "https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.0",
-            "archive_name": "GabeCubeAura-v1.1.0.zip",
-            "archive_url": "https://github.com/Alyenax/GabeCubeAura/releases/download/v1.1.0/GabeCubeAura-v1.1.0.zip",
+            "html_url": f"https://github.com/Alyenax/GabeCubeAura/releases/tag/v{version}",
+            "archive_name": f"GabeCubeAura-v{version}.zip",
+            "archive_url": f"https://github.com/Alyenax/GabeCubeAura/releases/download/v{version}/GabeCubeAura-v{version}.zip",
             "archive_size": archive.stat().st_size,
             "archive_digest": self.digest,
-            "checksums_url": "https://github.com/Alyenax/GabeCubeAura/releases/download/v1.1.0/SHA256SUMS",
+            "checksums_url": f"https://github.com/Alyenax/GabeCubeAura/releases/download/v{version}/SHA256SUMS",
             "etag": '"fixture"',
         }
 
     def latest(self, installed_version, *, etag=""):
+        self.calls.append((installed_version, etag))
         return dict(self.release)
 
     def read_checksum(self, release, installed_version):
@@ -135,7 +140,10 @@ class UpdateTests(unittest.TestCase):
     def test_versions_require_stable_semver_but_accept_local_test_install(self):
         self.assertEqual(_version_tuple("v1.1.0"), (1, 1, 0))
         self.assertEqual(_version_tuple("1.0.99-test.1", allow_test=True), (1, 0, 99, -1, 1))
-        for invalid in ("1.1", "1.1.0-beta", "01.1.0", "latest"):
+        self.assertEqual(_version_tuple("1.2.0-beta.2", allow_test=True), (1, 2, 0, -2, 2))
+        self.assertTrue(BETA_VERSION.fullmatch("1.2.0-beta.2"))
+        self.assertLess(_version_order("1.2.0-beta.2", allow_test=True), _version_order("1.2.0"))
+        for invalid in ("1.1", "1.1.0-beta", "1.2.0-beta2", "01.1.0", "latest"):
             with self.assertRaises(UpdateError, msg=invalid):
                 _version_tuple(invalid)
 
@@ -174,7 +182,53 @@ class UpdateTests(unittest.TestCase):
         with self.assertRaises(UpdateError):
             client.latest("1.0.0")
         test_client = GitHubReleaseClient(opener=opener, allow_prerelease=True)
-        self.assertEqual(test_client.latest("1.0.99-test.1")["version"], "1.1.0")
+        with self.assertRaises(UpdateError):
+            test_client.latest("1.0.99-test.1")
+
+    def test_beta_channel_selects_latest_published_beta_or_stable_release(self):
+        digest = "b" * 64
+
+        def metadata(version, prerelease=False, draft=False):
+            return {
+                "tag_name": f"v{version}",
+                "name": f"GabeCubeAura {version}",
+                "body": "notes",
+                "html_url": f"https://github.com/Alyenax/GabeCubeAura/releases/tag/v{version}",
+                "draft": draft,
+                "prerelease": prerelease,
+                "assets": [
+                    {
+                        "name": f"GabeCubeAura-v{version}.zip",
+                        "browser_download_url": f"https://github.com/Alyenax/GabeCubeAura/releases/download/v{version}/GabeCubeAura-v{version}.zip",
+                        "size": 100,
+                        "digest": f"sha256:{digest}",
+                    },
+                    {
+                        "name": "SHA256SUMS",
+                        "browser_download_url": f"https://github.com/Alyenax/GabeCubeAura/releases/download/v{version}/SHA256SUMS",
+                        "size": 100,
+                    },
+                ],
+            }
+
+        releases = [
+            metadata("1.1.1"),
+            metadata("1.2.0-beta.1", prerelease=True),
+            metadata("1.2.0-beta.2", prerelease=True),
+            metadata("1.2.0-beta.3", prerelease=True, draft=True),
+            metadata("1.3.0-beta.1", prerelease=False),
+        ]
+
+        def opener(request, timeout=10):
+            self.assertEqual(request.full_url, RELEASES_API_URL)
+            return FakeResponse(json.dumps(releases).encode(), {"ETag": '"beta-list"'})
+
+        client = GitHubReleaseClient(
+            opener=opener, api_url=RELEASES_API_URL, allow_prerelease=True,
+        )
+        result = client.latest("1.1.1")
+        self.assertEqual(result["version"], "1.2.0-beta.2")
+        self.assertEqual(result["etag"], '"beta-list"')
 
     def test_valid_archive_is_staged_and_manifest_version_is_enforced(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -251,10 +305,120 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(prepared["phase"], "ready")
             self.assertRegex(prepared["confirmation_token"], r"^[0-9a-f]{32}$")
             self.assertTrue((base / "runtime/updates/staged" / prepared["confirmation_token"] / "GabeCubeAura").is_dir())
-            manager.set_preferences(False, False)
+            manager.set_preferences(False, False, 180, "beta")
             restored = SettingsStore(str(base / "settings/config.json")).all()
             self.assertFalse(restored["updates_auto_check"])
             self.assertFalse(restored["updates_notifications"])
+            self.assertEqual(restored["updates_check_interval_minutes"], 180)
+            self.assertEqual(restored["updates_channel"], "beta")
+
+    def test_stable_110_discovers_and_prepares_stable_111(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "GabeCubeAura-v1.1.1.zip"
+            write_archive(archive, "1.1.1")
+            manager = UpdateManager(
+                "1.1.0", SettingsStore(str(base / "settings/config.json")),
+                str(base / "runtime"), str(base / "plugins/GabeCubeAura"),
+                FakeLogger(), client=FakeClient(archive, "1.1.1"),
+            )
+
+            discovered = manager.check()
+            prepared = manager.prepare()
+
+            self.assertEqual(discovered["channel"], "stable")
+            self.assertEqual(discovered["phase"], "available")
+            self.assertEqual(discovered["available_version"], "1.1.1")
+            self.assertFalse(discovered["return_to_stable"])
+            self.assertEqual(prepared["phase"], "ready")
+            self.assertTrue((base / "runtime/updates/staged" / prepared["confirmation_token"] / "GabeCubeAura").is_dir())
+
+    def test_switching_from_stable_to_beta_checks_immediately_and_prepares_beta(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "beta.zip"
+            write_archive(archive, "1.2.0-beta.2")
+            settings = SettingsStore(str(base / "settings/config.json"))
+            client = FakeClient(archive, "1.2.0-beta.2")
+            manager = UpdateManager(
+                "1.1.1", settings, str(base / "runtime"),
+                str(base / "plugins/GabeCubeAura"), FakeLogger(), client=client,
+            )
+
+            status = manager.set_preferences(True, True, 15, "beta")
+
+            self.assertEqual(status["channel"], "beta")
+            self.assertEqual(status["phase"], "available")
+            self.assertEqual(status["available_version"], "1.2.0-beta.2")
+            self.assertFalse(status["return_to_stable"])
+            self.assertEqual(len(client.calls), 1)
+            prepared = manager.prepare()
+            self.assertEqual(prepared["phase"], "ready")
+            self.assertTrue((base / "runtime/updates/staged" / prepared["confirmation_token"] / "GabeCubeAura").is_dir())
+
+    def test_switching_from_beta_to_stable_offers_verified_return_even_when_older(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "stable.zip"
+            write_archive(archive, "1.1.1")
+            settings = SettingsStore(str(base / "settings/config.json"))
+            settings.update({"updates_channel": "beta"})
+            client = FakeClient(archive, "1.1.1")
+            manager = UpdateManager(
+                "1.2.0-beta.2", settings, str(base / "runtime"),
+                str(base / "plugins/GabeCubeAura"), FakeLogger(), client=client,
+            )
+
+            status = manager.set_preferences(True, True, 60, "stable")
+
+            self.assertEqual(status["phase"], "available")
+            self.assertEqual(status["available_version"], "1.1.1")
+            self.assertTrue(status["return_to_stable"])
+            prepared = manager.prepare()
+            self.assertEqual(prepared["phase"], "ready")
+            self.assertTrue(prepared["return_to_stable"])
+
+    def test_new_stable_after_beta_is_a_forward_update_not_a_return(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "stable.zip"
+            write_archive(archive, "1.2.0")
+            settings = SettingsStore(str(base / "settings/config.json"))
+            settings.update({"updates_channel": "beta"})
+            manager = UpdateManager(
+                "1.2.0-beta.2", settings, str(base / "runtime"),
+                str(base / "plugins/GabeCubeAura"), FakeLogger(),
+                client=FakeClient(archive, "1.2.0"),
+            )
+
+            status = manager.set_preferences(True, True, 1440, "stable")
+
+            self.assertEqual(status["phase"], "available")
+            self.assertEqual(status["available_version"], "1.2.0")
+            self.assertFalse(status["return_to_stable"])
+
+    def test_startup_check_runs_once_even_when_periodic_deadline_is_in_the_future(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "release.zip"
+            write_archive(archive, "1.1.2")
+            settings = SettingsStore(str(base / "settings/config.json"))
+            client = FakeClient(archive, "1.1.2")
+            manager = UpdateManager(
+                "1.1.1", settings, str(base / "runtime"),
+                str(base / "plugins/GabeCubeAura"), FakeLogger(), client=client,
+                clock=lambda: 100,
+            )
+            manager._set(next_check_at=999999)
+
+            status = manager._check_on_startup()
+
+            self.assertEqual(status["phase"], "available")
+            self.assertEqual(len(client.calls), 1)
+
+            settings.update({"updates_auto_check": False})
+            manager._check_on_startup()
+            self.assertEqual(len(client.calls), 1)
 
     def test_health_acknowledgement_only_matches_pending_version_and_token(self):
         with tempfile.TemporaryDirectory() as directory:

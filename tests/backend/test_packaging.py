@@ -28,7 +28,7 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.1.0"', package)
+        self.assertIn('"version": "1.1.1"', package)
         self.assertIn('"url": "git+https://github.com/Alyenax/GabeCubeAura.git"', package)
         self.assertNotIn("Albusquerque/GabeCubeAura", package)
         self.assertIn('routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings)', panel)
@@ -84,6 +84,8 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('route: "/gabecubeaura/settings/updates"', panel)
         self.assertIn('label="Check for updates"', panel)
         self.assertIn('label="Automatically check for updates"', panel)
+        self.assertIn('label="Automatic check interval"', panel)
+        self.assertIn('label="Update channel"', panel)
         self.assertIn('label="Notify me when an update is available"', panel)
         self.assertIn('Update lab · TEST BUILD', panel)
 

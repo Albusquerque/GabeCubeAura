@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.1.1 - 2026-09-30
+
+This maintenance release exists to validate GabeCubeAura's direct updater on
+the public stable path before distributing the larger 1.2.0 beta. It is built
+from 1.1.0 and contains no Screen Sync, Weather, controller or other 1.2.0
+feature changes.
+
+- Add automatic update intervals of 15 minutes, 1, 3, 6, 12 or 24 hours.
+- Add Stable and Beta update channels. Stable remains the default. Beta can
+  offer a newer published prerelease through the same notification, verified
+  download and confirmation flow.
+- Run one automatic update check when Steam loads the plugin, when automatic
+  checks are enabled, without waiting for the periodic deadline.
+- Check immediately when the selected update channel changes.
+- Allow an installed beta to return explicitly to the current stable release,
+  even when that stable version has a lower version number. Keep transactional
+  recovery to the previously working build if the target does not start.
+
+### Coming very soon on the Beta channel
+
+- Support for up to four controllers.
+- Responsive real-time Screen Sync inspired by Hue Ambilight.
+- Improved night Weather patterns built around a proper night-blue background.
+- The Witcher 3 Lab, an experimental mod for visualising HUD elements on the
+  light bar in real time.
+
+These features are not included in 1.1.1. This release provides the opt-in Beta
+channel that will make them available for testing before their stable release.
+
 ## 1.1.0 - 2026-09-29
 
 - Add a dedicated Updates page with manual checks, daily background checks and

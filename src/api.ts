@@ -48,7 +48,12 @@ export const getUpdateStatus = callable<[], UpdateStatus>("get_update_status");
 export const checkForUpdates = callable<[], UpdateStatus>("check_for_updates");
 export const prepareUpdate = callable<[], UpdateStatus>("prepare_update");
 export const installPreparedUpdate = callable<[confirmationToken: string], { accepted: boolean; version: string }>("install_prepared_update");
-export const setUpdatePreferences = callable<[autoCheck: boolean, notifications: boolean], UpdateStatus>("set_update_preferences");
+export const setUpdatePreferences = callable<[
+  autoCheck: boolean,
+  notifications: boolean,
+  checkIntervalMinutes: number,
+  channel: "stable" | "beta",
+], UpdateStatus>("set_update_preferences");
 export const acknowledgeUpdateNotification = callable<[version: string], UpdateStatus>("acknowledge_update_notification");
 export const dismissUpdateError = callable<[], UpdateStatus>("dismiss_update_error");
 export const runUpdateLabScenario = callable<[scenario: UpdateLabResult["scenario"]], UpdateLabResult>("run_update_lab_scenario");

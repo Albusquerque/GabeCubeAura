@@ -230,8 +230,17 @@ class Plugin:
     async def install_prepared_update(self, confirmation_token: str):
         return self.update_manager.install(confirmation_token)
 
-    async def set_update_preferences(self, auto_check: bool, notifications: bool):
-        return self.update_manager.set_preferences(auto_check, notifications)
+    async def set_update_preferences(self, auto_check: bool, notifications: bool,
+                                     check_interval_minutes: int = 1440,
+                                     channel: str = "stable"):
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            self.update_manager.set_preferences,
+            auto_check,
+            notifications,
+            check_interval_minutes,
+            channel,
+        )
 
     async def acknowledge_update_notification(self, version: str):
         return self.update_manager.acknowledge_notification(version)

@@ -173,6 +173,18 @@ const CONTROLLER_CHARGING_OPTIONS = [
   { data: "continuous-home", label: "Continuous on Home" },
   { data: "continuous-everywhere", label: "Continuous everywhere" },
 ];
+const UPDATE_INTERVAL_OPTIONS = [
+  { data: 15, label: "15 minutes" },
+  { data: 60, label: "1 hour" },
+  { data: 180, label: "3 hours" },
+  { data: 360, label: "6 hours" },
+  { data: 720, label: "12 hours" },
+  { data: 1440, label: "24 hours" },
+];
+const UPDATE_CHANNEL_OPTIONS = [
+  { data: "stable", label: "Stable" },
+  { data: "beta", label: "Beta" },
+];
 function formatRemaining(seconds: number): string {
   const safe = Math.max(0, Math.ceil(seconds));
   const hours = Math.floor(safe / 3600);
@@ -201,7 +213,9 @@ function updatePhaseLabel(update: UpdateStatus): string {
   switch (update.phase) {
     case "checking": return "Checking for updates...";
     case "up_to_date": return "GabeCubeAura is up to date.";
-    case "available": return `Version ${update.available_version} is available.`;
+    case "available": return update.return_to_stable
+      ? `Stable version ${update.available_version} is ready to download.`
+      : `Version ${update.available_version} is available.`;
     case "downloading": return `Downloading ${update.available_version}...`;
     case "verifying": return "Checking the downloaded package...";
     case "ready": return `Ready to install ${update.available_version}.`;
@@ -1193,9 +1207,11 @@ function Content({ page = "quick" }: { page?: Page }) {
     const token = update.confirmation_token;
     const target = update.available_version;
     let modal: ReturnType<typeof showModal> | undefined;
-    modal = showModal(<ConfirmModal strTitle="Update GabeCubeAura?"
-      strDescription={`Update from ${update.installed_version} to ${target}? The downloaded package passed its checksum and package checks. Your settings and artwork cache will be kept. Decky will restart briefly.`}
-      strOKButtonText="Update and restart Decky" strCancelButtonText="Cancel"
+    modal = showModal(<ConfirmModal strTitle={update.return_to_stable ? "Return to stable GabeCubeAura?" : "Update GabeCubeAura?"}
+      strDescription={update.return_to_stable
+        ? `Return from ${update.installed_version} to stable ${target}? The downloaded package passed its checksum and package checks. Your settings and artwork cache will be kept. If the stable build does not start, GabeCubeAura restores the working beta. Decky will restart briefly.`
+        : `Update from ${update.installed_version} to ${target}? The downloaded package passed its checksum and package checks. Your settings and artwork cache will be kept. Decky will restart briefly.`}
+      strOKButtonText={update.return_to_stable ? "Install stable and restart" : "Update and restart Decky"} strCancelButtonText="Cancel"
       onCancel={() => modal?.Close()}
       onOK={() => {
         modal?.Close();
@@ -1647,7 +1663,7 @@ function Content({ page = "quick" }: { page?: Page }) {
         <PanelSection title="Software updates">
           <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em", lineHeight: 1.45 }}>
             <div>Installed version: <b>{update.installed_version}</b></div>
-            <div>Latest stable version: <b>{update.available_version || update.installed_version}</b></div>
+            <div>{update.channel === "stable" ? "Latest stable version" : "Latest beta or stable version"}: <b>{update.available_version || update.installed_version}</b></div>
             <div>Current status: <b>{updatePhaseLabel(update)}</b></div>
             <div>Last checked: {formatUpdateDate(update.last_checked_at)}</div>
             {update.prepared_digest ? <div>Verified SHA256: <code>{update.prepared_digest.slice(0, 12)}...</code></div> : null}
@@ -1659,10 +1675,10 @@ function Content({ page = "quick" }: { page?: Page }) {
           {update.release_url ? <PanelSectionRow><ButtonItem label="View release notes"
             description="Opens the official Alyenax/GabeCubeAura release page."
             onClick={() => Navigation.NavigateToExternalWeb(update.release_url)}>Open GitHub</ButtonItem></PanelSectionRow> : null}
-          {update.phase === "available" ? <PanelSectionRow><ButtonItem label="Download update"
+          {update.phase === "available" ? <PanelSectionRow><ButtonItem label={update.return_to_stable ? `Download stable ${update.available_version}` : "Download update"}
             description="Downloads and checks the archive. Nothing is installed yet."
             disabled={updateBusy} onClick={() => void runUpdateAction(prepareUpdate)}>Download and verify</ButtonItem></PanelSectionRow> : null}
-          {update.phase === "ready" ? <PanelSectionRow><ButtonItem label={`Install ${update.available_version}`}
+          {update.phase === "ready" ? <PanelSectionRow><ButtonItem label={update.return_to_stable ? `Return to stable ${update.available_version}` : `Install ${update.available_version}`}
             description="Settings and artwork caches are kept. Decky restarts briefly."
             disabled={updateBusy} onClick={confirmUpdateInstall}>Update and restart Decky</ButtonItem></PanelSectionRow> : null}
           {update.release_notes ? <PanelSectionRow><div style={{ width: "100%", fontSize: ".76em", opacity: .8, whiteSpace: "pre-wrap", maxHeight: 180, overflow: "hidden" }}>
@@ -1673,11 +1689,23 @@ function Content({ page = "quick" }: { page?: Page }) {
         </PanelSection>
         <PanelSection title="Automatic checks">
           <PanelSectionRow><ToggleField label="Automatically check for updates"
-            description="Checks the official Alyenax/GabeCubeAura GitHub releases once a day. Nothing is installed without your confirmation."
-            checked={update.auto_check} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(value, update.notifications))} /></PanelSectionRow>
+            description="Checks once after GabeCubeAura starts, then at the selected interval. Nothing is installed without your confirmation."
+            checked={update.auto_check} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(value, update.notifications, update.check_interval_minutes, update.channel))} /></PanelSectionRow>
+          <PanelSectionRow><DropdownItem label="Automatic check interval"
+            description="Used after the automatic check that runs when Steam loads the plugin."
+            disabled={!update.auto_check || updateBusy}
+            rgOptions={UPDATE_INTERVAL_OPTIONS} selectedOption={update.check_interval_minutes}
+            onChange={(option) => void runUpdateAction(() => setUpdatePreferences(update.auto_check, update.notifications, Number(option.data), update.channel))} /></PanelSectionRow>
+          <PanelSectionRow><DropdownItem label="Update channel"
+            description={update.channel === "stable"
+              ? "Stable releases only."
+              : "Published beta releases and later stable releases. Changing channel checks immediately."}
+            disabled={updateBusy || ["downloading", "verifying", "ready", "installing", "restart_pending"].includes(update.phase)}
+            rgOptions={UPDATE_CHANNEL_OPTIONS} selectedOption={update.channel}
+            onChange={(option) => void runUpdateAction(() => setUpdatePreferences(update.auto_check, update.notifications, update.check_interval_minutes, String(option.data) as "stable" | "beta"))} /></PanelSectionRow>
           <PanelSectionRow><ToggleField label="Notify me when an update is available"
-            description="Shows one Decky notification for each new stable version."
-            checked={update.notifications} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(update.auto_check, value))} /></PanelSectionRow>
+            description="Shows one Decky notification for each new version on the selected channel."
+            checked={update.notifications} onChange={(value) => void runUpdateAction(() => setUpdatePreferences(update.auto_check, value, update.check_interval_minutes, update.channel))} /></PanelSectionRow>
         </PanelSection>
         <PanelSection title="Installation safety">
           <PanelSectionRow><div style={{ width: "100%", fontSize: ".78em", opacity: .82 }}>

@@ -37,6 +37,9 @@ export interface UpdateStatus {
   error: string;
   auto_check: boolean;
   notifications: boolean;
+  check_interval_minutes: number;
+  channel: "stable" | "beta";
+  return_to_stable: boolean;
   test_build: boolean;
 }
 

@@ -8,7 +8,7 @@ expressive. Choose separate permanent displays for Home and games, then let
 temporary launch, playtime, and Steam moments take the stage before the
 selected display returns.
 
-[Download GabeCubeAura v1.1.0](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.0)
+[Download GabeCubeAura v1.1.1](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.1)
 
 GabeCubeAura is the new name of SignalBar. On first launch it imports existing
 SignalBar settings and artwork caches. Existing users keep their configuration.
@@ -207,10 +207,17 @@ GabeCubeAura follows a strict order:
 
 ### Updates inside GabeCubeAura
 
-Version 1.1.0 adds a dedicated **Updates** page. GabeCubeAura checks the official
-`Alyenax/GabeCubeAura` GitHub releases once a day and can show one Decky
-notification for each new stable version. It never installs an update without
-confirmation.
+Version 1.1.1 keeps the direct updater introduced in 1.1.0 and adds selectable
+checks every 15 minutes, 1, 3, 6, 12 or 24 hours. When Steam loads the plugin,
+GabeCubeAura also performs one automatic check if automatic checks are enabled.
+It can show one Decky notification for each newly available version and never
+installs an update without confirmation.
+
+Stable remains the default channel and ignores prereleases. Users who select
+Beta can receive a published beta through the same notification, verified
+download and confirmation flow. Changing channel checks immediately. A beta
+user can return explicitly to the current stable release even when its version
+number is lower than the installed beta.
 
 Before installation, the plugin verifies HTTPS, the release metadata, archive
 size, SHA256 checksum, ZIP paths and package version. Decky then restarts
@@ -218,14 +225,15 @@ briefly. Settings and artwork caches remain outside the replaced plugin
 directory. If the new backend does not confirm a healthy startup within 45
 seconds, the previous plugin version is restored automatically.
 
-Existing v1.0.0 installations need one final manual installation of v1.1.0.
-Later releases can be downloaded and installed from **Settings > Updates**.
+Existing v1.1.0 installations can update directly to v1.1.1. Version 1.0.0
+installations need one final manual installation of v1.1.1. Later releases can
+be downloaded and installed from **Settings > Updates**.
 
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Download `GabeCubeAura-v1.1.0.zip` from the
-   [GabeCubeAura v1.1.0 release](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.0).
+2. Download `GabeCubeAura-v1.1.1.zip` from the
+   [GabeCubeAura v1.1.1 release](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.1).
    Do not extract it.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
@@ -377,12 +385,12 @@ corepack pnpm build
 corepack pnpm package
 ```
 
-The installable archives are written to `out/GabeCubeAura-v1.1.0.zip` and
+The installable archives are written to `out/GabeCubeAura-v1.1.1.zip` and
 `out/GabeCubeAura.zip`. Their identical SHA256 values are written to
 `out/SHA256SUMS`.
 
-See [the GabeCubeAura 1.1.0 release notes](docs/RELEASE_NOTES_1.1.0.md) for the
-direct update flow and recovery model.
+See [the GabeCubeAura 1.1.1 release notes](docs/RELEASE_NOTES_1.1.1.md) for the
+Stable and Beta channel flow and recovery model.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
 hardware-rendering details. Release history is available in

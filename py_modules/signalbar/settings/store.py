@@ -111,6 +111,8 @@ DEFAULTS = {
     "guard_stable_s": 2.0,
     "updates_auto_check": True,
     "updates_notifications": True,
+    "updates_check_interval_minutes": 1440,
+    "updates_channel": "stable",
 }
 
 VALID_MODES = {"artwork", "performance", "customization", "events", "disabled"}
@@ -449,6 +451,16 @@ class SettingsStore:
         self._data["hot_temp_c"] = max(self._data["cool_temp_c"] + 1.0, min(120.0, float(self._data["hot_temp_c"])))
         self._data["guard_cooldown_s"] = max(1.0, min(30.0, float(self._data["guard_cooldown_s"])))
         self._data["guard_stable_s"] = max(0.5, min(10.0, float(self._data["guard_stable_s"])))
+        try:
+            interval = int(self._data["updates_check_interval_minutes"])
+        except (TypeError, ValueError, OverflowError):
+            interval = DEFAULTS["updates_check_interval_minutes"]
+        self._data["updates_check_interval_minutes"] = (
+            interval if interval in {15, 60, 180, 360, 720, 1440}
+            else DEFAULTS["updates_check_interval_minutes"]
+        )
+        if self._data["updates_channel"] not in {"stable", "beta"}:
+            self._data["updates_channel"] = DEFAULTS["updates_channel"]
         raw_profiles = self._data.get("artwork_profiles")
         profiles = {}
         if isinstance(raw_profiles, dict):
