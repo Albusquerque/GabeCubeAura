@@ -9,6 +9,12 @@ It contains no Screen Sync, Weather, controller or other 1.2.0 feature changes.
   starting the SteamOS `systemd-run` command.
 - Keep the original helper launch failure detail in the Decky backend log while
   retaining a short error in the interface.
+- Synchronize the running backend with the terminal transaction state written by
+  the independent helper after Decky restarts.
+- Recover a healthy replacement backend if persisted state remains at
+  `restart_pending`, then allow update checks and channel selection again.
+- Close an older `restart_pending` transaction when a newer manual installation
+  has already replaced its target version.
 - Add coverage that launches the helper from a deliberately contaminated Decky
   environment and verifies that system commands receive a clean environment.
 - Require one manual installation of 1.1.2 for versions 1.0.0, 1.1.0 and 1.1.1.

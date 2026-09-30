@@ -15,6 +15,13 @@ Version 1.1.2 removes Decky's library and Python runtime overrides before
 starting the helper. If helper startup still fails, the original system detail
 is retained in the Decky backend log for diagnosis.
 
+After Decky restarts, the running backend now reloads the terminal transaction
+state written by the helper instead of retaining an in-memory
+`restart_pending` snapshot. A healthy replacement backend can also recover that
+state after a short grace period, which re-enables update checks and Stable or
+Beta channel selection. A newer manual installation also closes an older
+`restart_pending` transaction automatically instead of inheriting its lock.
+
 ## One-time manual installation
 
 Versions 1.0.0, 1.1.0 and 1.1.1 must install 1.1.2 manually. The correction has

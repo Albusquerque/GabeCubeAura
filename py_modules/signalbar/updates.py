@@ -29,6 +29,7 @@ TEST_RELEASE_API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/relea
 EXPECTED_ROOT = "GabeCubeAura"
 CHECK_INTERVAL_MINUTES = {15, 60, 180, 360, 720, 1440}
 STARTUP_DELAY_SECONDS = 20
+HEALTHY_TRANSACTION_RECOVERY_SECONDS = 5
 MAX_METADATA_BYTES = 512 * 1024
 MAX_CHECKSUM_BYTES = 64 * 1024
 MAX_ARCHIVE_BYTES = 5 * 1024 * 1024
@@ -556,6 +557,80 @@ class UpdateManager:
             "acknowledged_at": int(self.clock()),
         })
 
+    def _refresh_helper_state(self):
+        """Adopt terminal state written by the independent update helper."""
+        if self._state.get("phase") not in {"installing", "swap_started", "swapped", "restart_pending"}:
+            return
+        token = str(self._state.get("pending_token", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            return
+        persisted = _safe_read_json(self.state_path, {})
+        phase = str(persisted.get("phase", ""))
+        same_transaction = (
+            persisted.get("completed_token") == token
+            or persisted.get("pending_token") == token
+        )
+        if same_transaction and phase in {"updated", "rolled_back", "error"}:
+            self._state = self._load_state()
+
+    def _recover_healthy_pending_transaction(self):
+        """Finish a stale restart once the replacement backend is healthy."""
+        if self._state.get("phase") != "restart_pending":
+            return
+        token = str(self._state.get("pending_token", ""))
+        expected = str(self._state.get("pending_version", ""))
+        if (not re.fullmatch(r"[0-9a-f]{32}", token)
+                or expected != self.installed_version):
+            return
+        health = _safe_read_json(self.root / "health" / f"{token}.json", {})
+        acknowledged_at = int(health.get("acknowledged_at", 0) or 0)
+        if (health.get("token") != token or health.get("version") != expected
+                or self.clock() - acknowledged_at < HEALTHY_TRANSACTION_RECOVERY_SECONDS):
+            return
+        transaction = _safe_read_json(self.root / "transactions" / f"{token}.json", {})
+        rollback_version = str(transaction.get("from_version", ""))
+        self._set(
+            phase="updated", installed_version=self.installed_version,
+            pending_token="", pending_version="", confirmation_token="",
+            available_version="", release_notes="", release_url="",
+            prepared_digest="", rollback_version=rollback_version,
+            last_result="updated", completed_token=token,
+            error="", error_category="",
+        )
+        self.logger.warning(
+            "[GabeCubeAura] recovered a healthy update transaction left at restart_pending"
+        )
+
+    def _recover_superseded_pending_transaction(self):
+        """Unlock a stale restart replaced by a different manual installation."""
+        if self._state.get("phase") != "restart_pending":
+            return
+        token = str(self._state.get("pending_token", ""))
+        expected = str(self._state.get("pending_version", ""))
+        if (not re.fullmatch(r"[0-9a-f]{32}", token)
+                or not expected or expected == self.installed_version):
+            return
+        transaction = _safe_read_json(self.root / "transactions" / f"{token}.json", {})
+        previous = str(transaction.get("from_version", ""))
+        result = "rolled_back" if previous == self.installed_version else "updated"
+        self._set(
+            phase=result, installed_version=self.installed_version,
+            pending_token="", pending_version="", confirmation_token="",
+            available_version="", release_notes="", release_url="",
+            prepared_digest="", rollback_version=previous,
+            last_result=result, completed_token=token,
+            error="", error_category="",
+        )
+        self.logger.warning(
+            "[GabeCubeAura] closed a restart_pending transaction superseded by the installed version"
+        )
+
+    def _reconcile_helper_state(self):
+        with self._lock:
+            self._refresh_helper_state()
+            self._recover_superseded_pending_transaction()
+            self._recover_healthy_pending_transaction()
+
     def start(self):
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -632,6 +707,7 @@ class UpdateManager:
         return candidate > installed, False
 
     def status(self):
+        self._reconcile_helper_state()
         with self._lock:
             values = self.settings.all()
             result = dict(self._state)
@@ -649,6 +725,7 @@ class UpdateManager:
             return result
 
     def check(self):
+        self._reconcile_helper_state()
         if self._state.get("phase") in {"downloading", "verifying", "ready", "installing", "restart_pending"}:
             return self.status()
         if not self._operation_lock.acquire(blocking=False):

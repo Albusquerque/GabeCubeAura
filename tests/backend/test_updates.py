@@ -478,6 +478,112 @@ class UpdateTests(unittest.TestCase):
             health = json.loads((runtime / f"updates/health/{token}.json").read_text(encoding="utf-8"))
             self.assertEqual(health["version"], "1.1.0")
 
+    def test_running_backend_adopts_terminal_state_written_by_helper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            token = "c" * 32
+            state = base / "runtime/updates/update-state.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({
+                "phase": "restart_pending",
+                "installed_version": "1.1.0",
+                "pending_token": token,
+                "pending_version": "1.1.1",
+            }), encoding="utf-8")
+            manager = UpdateManager(
+                "1.1.1", SettingsStore(str(base / "settings.json")),
+                str(base / "runtime"), str(base / "plugins/GabeCubeAura"),
+                FakeLogger(), clock=lambda: 100,
+            )
+            persisted = json.loads(state.read_text(encoding="utf-8"))
+            persisted.update({
+                "phase": "updated",
+                "installed_version": "1.1.1",
+                "pending_token": "",
+                "pending_version": "",
+                "completed_token": token,
+                "last_result": "updated",
+            })
+            state.write_text(json.dumps(persisted), encoding="utf-8")
+
+            status = manager.status()
+
+            self.assertEqual(status["phase"], "updated")
+            self.assertEqual(status["last_result"], "updated")
+
+    def test_healthy_restart_pending_recovers_and_can_find_next_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            token = "d" * 32
+            now = [100]
+            archive = base / "GabeCubeAura-v1.1.2.zip"
+            write_archive(archive, "1.1.2")
+            state = base / "runtime/updates/update-state.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({
+                "phase": "restart_pending",
+                "installed_version": "1.1.0",
+                "pending_token": token,
+                "pending_version": "1.1.1",
+            }), encoding="utf-8")
+            transaction = state.parent / f"transactions/{token}.json"
+            transaction.parent.mkdir(parents=True)
+            transaction.write_text(json.dumps({
+                "token": token,
+                "from_version": "1.1.0",
+                "to_version": "1.1.1",
+            }), encoding="utf-8")
+            manager = UpdateManager(
+                "1.1.1", SettingsStore(str(base / "settings.json")),
+                str(base / "runtime"), str(base / "plugins/GabeCubeAura"),
+                FakeLogger(), client=FakeClient(archive, "1.1.2"),
+                clock=lambda: now[0],
+            )
+
+            now[0] = 103
+            self.assertEqual(manager.status()["phase"], "restart_pending")
+            now[0] = 106
+            discovered = manager.check()
+
+            self.assertEqual(discovered["phase"], "available")
+            self.assertEqual(discovered["available_version"], "1.1.2")
+            self.assertEqual(discovered["rollback_version"], "1.1.0")
+
+    def test_manual_newer_install_closes_older_restart_pending_transaction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            token = "e" * 32
+            archive = base / "GabeCubeAura-v1.1.2.zip"
+            write_archive(archive, "1.1.2")
+            state = base / "runtime/updates/update-state.json"
+            state.parent.mkdir(parents=True)
+            state.write_text(json.dumps({
+                "phase": "restart_pending",
+                "installed_version": "1.1.0",
+                "pending_token": token,
+                "pending_version": "1.1.1",
+            }), encoding="utf-8")
+            transaction = state.parent / f"transactions/{token}.json"
+            transaction.parent.mkdir(parents=True)
+            transaction.write_text(json.dumps({
+                "token": token,
+                "from_version": "1.1.0",
+                "to_version": "1.1.1",
+            }), encoding="utf-8")
+            manager = UpdateManager(
+                "1.1.2", SettingsStore(str(base / "settings.json")),
+                str(base / "runtime"), str(base / "plugins/GabeCubeAura"),
+                FakeLogger(), client=FakeClient(archive, "1.1.2"),
+            )
+
+            recovered = manager.status()
+            checked = manager.check()
+
+            self.assertEqual(recovered["phase"], "updated")
+            self.assertEqual(recovered["installed_version"], "1.1.2")
+            self.assertEqual(checked["phase"], "up_to_date")
+            self.assertEqual(checked["pending_version"], "")
+
     def test_update_lab_runs_all_fixed_scenarios_without_real_plugin_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
