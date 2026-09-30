@@ -1,4 +1,4 @@
-# WARNING — Witcher Remastered telemetry compatibility audit
+# WARNING: Witcher Remastered telemetry compatibility audit
 
 Date: 2026-09-30
 

@@ -1,4 +1,4 @@
-# WARNING — Valve LED ownership regression
+# WARNING: Valve LED ownership regression
 
 Do not treat an on-screen preview, an active provider, or an active Witcher lab
 as proof that a frame reached the physical Steam Machine light bar.
@@ -7,7 +7,7 @@ as proof that a frame reached the physical Steam Machine light bar.
 
 Two separate changes explain the failure:
 
-1. **Latent hardware-control omission — 2026-09-20**
+1. **Latent hardware-control omission (2026-09-20)**
    - Commit: `f88072dcc8569c98604c8cc743bf7c94ecb769a7`
    - Release: SignalBar `v0.2.1`
    - `ValveLedHardware.write_frame()` wrote only the 17 `multi_intensity`
@@ -17,7 +17,7 @@ Two separate changes explain the failure:
      v1.1.0 and the original 1.2.0-beta1 base. Earlier apparent success could
      therefore depend on Valve already being in a compatible hardware state.
 
-2. **Intentional guardrail with an overly broad side effect — 2026-09-29 19:14 +02:00**
+2. **Intentional guardrail with an overly broad side effect (2026-09-29 19:14 +02:00)**
    - Commit: `a0470b22336184c5444b12acd57a58e1b2b32943`
    - Release line: GabeCubeAura `1.2.0-beta1`
    - Repeated native changes began escalating to hard Steam priority.
@@ -34,7 +34,7 @@ The Witcher beta3 work did not introduce the original fault. It inherited the
 beta1 ownership path and made the distinction between a simulated frame and a
 physical write especially visible.
 
-## Non-regression invariant — do not invert the priority
+## Non-regression invariant: do not invert the priority
 
 The fact that Valve sometimes keeps the strip is **not by itself a defect**.
 It is the intended safety contract whenever the ownership signal is genuine:

@@ -19,7 +19,7 @@ transpositions. Existing GabeCubeAura and SignalBar settings remain compatible.
 ## The Witcher 3 experimental HUD lab
 
 This feature is **experimental** and made specifically for The Witcher 3: Wild
-Hunt — Complete Edition / Remastered through Steam AppID `292030`. Open
+Hunt: Complete Edition / Remastered through Steam AppID `292030`. Open
 GabeCubeAura, then select **The Witcher 3 · experimental**. The
 optional companion WitcherScript mod sends live vitality, stamina, toxicity,
 adrenaline, combat state and Sign casts through a bounded state file in the
