@@ -6,8 +6,8 @@
   vitality, stamina, toxicity, adrenaline, combat and Sign reactions from the
   optional WitcherScript bridge.
 - Install, verify, repair or safely remove the bridge from the Witcher page;
-  preserve modified files and report the required `-net -debugscripts` and
-  `DebugScriptsForceFlush=true` setup states.
+  preserve modified files and report the Steam launch flags and optional
+  script-log fallback status.
 - Require a fresh `GCA1` telemetry record before claiming the physical bar,
   expire stale data and release the Lab when the game exits or routing changes.
 - Add a focused Witcher and Screen Sync diagnostic export with transport,

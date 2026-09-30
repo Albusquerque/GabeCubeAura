@@ -44,25 +44,11 @@ game-side mod is missing or stale.
    -net -debugscripts
    ```
 
-4. Start the game once so its settings files exist. In the AppID 292030 Proton
-   prefix, open the file reported by the Witcher page. It is normally one of:
-
-   ```text
-   .../steamapps/compatdata/292030/pfx/drive_c/users/steamuser/Documents/The Witcher 3/dx12user.settings
-   .../steamapps/compatdata/292030/pfx/drive_c/users/steamuser/Documents/The Witcher 3/user.settings
-   ```
-
-5. Under the existing `[Scripts]` section, add or change this line:
-
-   ```ini
-   [Scripts]
-   DebugScriptsForceFlush=true
-   ```
-
-   Do not add a second `[Scripts]` section if one already exists. Save the file,
-   then fully restart The Witcher 3.
-6. Reopen the Witcher page. It separately reports the two Steam launch flags,
-   `DebugScriptsForceFlush=true`, the installed script checksum, the live
+4. Start the game and load a save. The bridge creates its telemetry state file
+   automatically. No manual edit of `dx12user.settings` or `user.settings` is
+   required for the primary transport.
+5. Reopen the Witcher page. It reports the two Steam launch flags, the optional
+   script-log fallback status, the installed script checksum, the live
    transport and the current physical owner.
 
 Use **Install telemetry mod** at the top of the Witcher page to discover the

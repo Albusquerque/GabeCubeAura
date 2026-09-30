@@ -33,10 +33,8 @@ records in the script-log fallback.
 1. Install or repair the bridge from the top of the Witcher page, then restart
    the game so WitcherScript recompiles.
 2. In Steam Launch Options, enter exactly `-net -debugscripts`.
-3. Under `[Scripts]` in `dx12user.settings` for DX12/Remastered, or
-   `user.settings` for DX11, set `DebugScriptsForceFlush=true`.
-4. Reopen the Witcher page and check the reported script, launch-option,
-   force-flush, telemetry and physical-owner states.
+3. Reopen the Witcher page and check the reported script, telemetry and
+   physical-owner states. No manual settings-file edit is required.
 
 ## Safety and coexistence
 

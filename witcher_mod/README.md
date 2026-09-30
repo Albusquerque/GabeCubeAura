@@ -13,13 +13,13 @@ It does not open a network socket and does not change gameplay.
 3. Add `-net -debugscripts` to the game's Steam launch options. `-net` enables
    the script debug channel used by `LogChannel`; `-debugscripts` alone is not
    the supported complete launch configuration for this bridge.
-4. In the AppID 292030 Proton prefix, edit
-   `drive_c/users/steamuser/Documents/The Witcher 3/dx12user.settings` for the
-   DX12/Remastered renderer, or `user.settings` for DX11. Under the existing
-   `[Scripts]` section, set `DebugScriptsForceFlush=true`. If `[Scripts]` does
-   not exist, add it at the end of the file.
-5. Start the game, load a save, open GabeCubeAura's
+4. Start the game, load a save, open GabeCubeAura's
    **The Witcher 3 · experimental** page and enable the light output.
+
+The bridge creates `GabeCubeAuraTelemetry.ini` automatically. No manual edit of
+`dx12user.settings`, `user.settings` or `DebugScriptsForceFlush` is required
+for this primary transport. The settings status shown by GabeCubeAura concerns
+only the independent script-log diagnostic fallback.
 
 The page should change from **manual fallback** to **live WitcherScript
 telemetry**. The primary state file is

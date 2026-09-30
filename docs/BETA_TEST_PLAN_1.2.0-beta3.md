@@ -73,11 +73,10 @@ This plan separates software verification from physical Steam Machine results.
    292030 game directory under lower-case `mods`. If an older upper-case
    `Mods` copy exists, confirm Repair migrates or preserves it explicitly. The
    companion archive in `out/` remains the manual fallback.
-2. Add `-net -debugscripts` to Steam launch options, and set
-   `DebugScriptsForceFlush=true` under `[Scripts]` in the prefix's
-   `user.settings`. Confirm the page detects both launch flags and reports the
-   script flush as configured. If either row says it cannot be detected, verify
-   the Steam setting manually and retain that exact diagnostic in the report.
+2. Add `-net -debugscripts` to Steam launch options and start the game once.
+   Confirm the page detects both launch flags. Record the automatically managed
+   script-flush state only as diagnostic evidence for the optional log fallback;
+   do not edit the settings file for the primary direct telemetry transport.
 3. On Steam Home, confirm the page explains that AppID `292030` is required and
    cannot enable hardware output.
 4. Launch The Witcher 3: Wild Hunt - Complete Edition and confirm the quick
