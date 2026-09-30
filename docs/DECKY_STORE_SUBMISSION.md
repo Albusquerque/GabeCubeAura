@@ -1,11 +1,11 @@
 # Decky Store submission
 
-Prepared on 2026-09-27 by Albus Querque for GabeCubeAura 1.0.0.
+Prepared on 2026-09-27 by Alyenax for GabeCubeAura 1.0.0.
 
 ## Public listing
 
 - Name: GabeCubeAura
-- Author: Albus Querque
+- Author: Alyenax
 - Repository: `https://github.com/Alyenax/GabeCubeAura`
 - Version: `1.0.0`
 - License: BSD 3-Clause

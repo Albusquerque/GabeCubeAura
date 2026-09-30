@@ -1,6 +1,6 @@
 # GabeCubeAura rebrand publication record
 
-Completed on 2026-09-27 by Albus Querque for the GabeCubeAura 1.0.0 public
+Completed on 2026-09-27 by Alyenax for the GabeCubeAura 1.0.0 public
 release.
 
 ## Result
@@ -103,7 +103,7 @@ owner.
 
 ## Publication policy
 
-- All commits and releases use the identity Albus Querque
+- All commits and releases use the identity Alyenax
   `<guyalbuquerque@gmx.fr>`.
 - No GitHub Actions workflow is present in the primary repository.
 - GitHub Actions is disabled for the primary repository and the four Pages

@@ -2,7 +2,7 @@
 
 Date: 2026-09-29
 
-Status: merged into GabeCubeAura `1.2.0-beta1` for local testing. The complete
+Status: merged into GabeCubeAura `1.2.0-beta2` for local testing. The complete
 local
 test, type-check, build and package campaign passed on 2026-09-29. Physical
 Steam Machine validation remains mandatory.
@@ -143,9 +143,11 @@ Steam's current screensaver service is private and may change. The frontend
 adapter should therefore:
 
 - locate the service by capability rather than a fixed module name;
-- require both `GetActiveState` and `ForceScreensaver` before identifying a
-  candidate;
+- require `GetActiveState` before identifying a candidate, while treating
+  `ForceScreensaver` as optional because normal monitoring is read-only;
 - use `GetActiveState` only for normal monitoring;
+- use the active-state notification when the Steam build exposes it, with
+  conservative polling as the fallback;
 - feature-detect every call and use bounded timeouts;
 - poll conservatively;
 - reset and rediscover the adapter after failures;

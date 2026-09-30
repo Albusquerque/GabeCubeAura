@@ -15,6 +15,7 @@ from typing import Optional
 from signalbar.models import Frame, LED_COUNT, normalize_frame
 
 LED_GLOB = "/sys/class/leds/valve-leds[[]*[]]"
+VALVE_ANIMATED_EFFECTS = {"patrol", "breath", "factory", "rainbow", "demo"}
 
 
 def _index(path: str) -> int:
@@ -63,6 +64,22 @@ class ValveLedHardware:
         with open(os.path.join(path, name), "w", encoding="ascii") as handle:
             handle.write(value)
 
+    def _control_path(self, name: str) -> str:
+        return os.path.join(self.paths[0], name)
+
+    def _read_control(self, name: str) -> Optional[str]:
+        path = self._control_path(name)
+        if not os.path.exists(path):
+            return None
+        return self._read(self.paths[0], name)
+
+    def _write_control(self, name: str, value: str) -> bool:
+        path = self._control_path(name)
+        if not os.path.exists(path):
+            return False
+        self._write(self.paths[0], name, value)
+        return True
+
     def read_frame(self) -> Frame:
         with self._io_lock:
             values = []
@@ -75,12 +92,79 @@ class ValveLedHardware:
             return normalize_frame(values)
 
     def read_signature(self):
-        """Include master brightness so Valve slider changes trigger a yield."""
+        """Include Valve's global mode as well as every visible LED input."""
         with self._io_lock:
-            return tuple(
+            controls = (
+                self._read_control("effect"),
+                self._read_control("enabled"),
+                self._read_control("brightness_scale"),
+            )
+            pixels = tuple(
                 (self._read(path, "multi_intensity"), self._read(path, "brightness"))
                 for path in self.paths
             )
+            return controls, pixels
+
+    @staticmethod
+    def stability_signature(signature):
+        """Ignore brightness-only churn while waiting for the initial claim.
+
+        The global effect and RGB targets still have to remain stable. Once
+        GabeCubeAura owns the bar, the full signature is used so a Valve
+        brightness or mode change immediately yields ownership.
+        """
+        controls, pixels = signature
+        effect, enabled, _brightness_scale = controls
+        return (effect, enabled), tuple(pixel[0] for pixel in pixels)
+
+    @staticmethod
+    def native_priority_reason(signature) -> str:
+        """Recognize native states that must never be replaced by a plugin.
+
+        Steam's explicit download lease remains the primary signal. Hardware
+        effects provide a local fallback if that private Steam callback is not
+        available. A nearly full fixed red bar is treated conservatively as a
+        critical thermal/system warning even though it is not animated.
+        """
+        controls, pixels = signature
+        effect, enabled, brightness_scale = controls
+        if str(enabled or "1").strip().lower() in {"0", "false", "off"}:
+            return ""
+        effect = str(effect or "").strip().lower()
+        if effect in VALVE_ANIMATED_EFFECTS:
+            return f"Valve {effect} hardware effect"
+        try:
+            if int(str(brightness_scale or "255"), 0) <= 0:
+                return ""
+        except ValueError:
+            pass
+
+        critical_red = 0
+        for colour, brightness in pixels:
+            try:
+                red, green, blue = (int(part) for part in str(colour).split())
+                visible = int(str(brightness), 0) > 0
+            except (TypeError, ValueError):
+                continue
+            if visible and red >= 96 and green <= max(24, red // 4) and blue <= max(24, red // 4):
+                critical_red += 1
+        if pixels and critical_red >= max(1, len(pixels) - 2):
+            return "Valve critical red hardware signal"
+        return ""
+
+    def capture_state(self):
+        with self._io_lock:
+            return {
+                "frame": self.read_frame(),
+                "effect": self._read_control("effect"),
+                "enabled": self._read_control("enabled"),
+            }
+
+    def claim_manual_control(self):
+        """Select the hardware mode required for direct per-pixel writes."""
+        with self._io_lock:
+            self._write_control("effect", "manual")
+            self._write_control("enabled", "1")
 
     def write_frame(self, frame: Frame):
         frame = normalize_frame(frame)
@@ -91,3 +175,17 @@ class ValveLedHardware:
     def try_restore(self, frame: Optional[Frame]):
         if frame is not None:
             self.write_frame(frame)
+
+    def try_restore_state(self, state):
+        if not state:
+            return
+        with self._io_lock:
+            frame = state.get("frame")
+            if frame is not None:
+                self.write_frame(frame)
+            effect = state.get("effect")
+            if effect is not None:
+                self._write_control("effect", effect)
+            enabled = state.get("enabled")
+            if enabled is not None:
+                self._write_control("enabled", enabled)

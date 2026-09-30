@@ -12,6 +12,7 @@ class VanillaGuard:
         self._clock = clock
         now = self._clock()
         self._last_observed = None
+        self._last_stability_observed = None
         self._last_change_at = now
         self._blocked_until = now + self.stable_s
         self._reason = "startup settle"
@@ -46,15 +47,21 @@ class VanillaGuard:
             self._hard_until = max(self._hard_until, now + self.cooldown_s)
             self._hard_reason = self._reason
 
-    def observe(self, signature, expected_signature=None, explicit_active=False, explicit_reason=""):
+    def observe(self, signature, expected_signature=None, explicit_active=False, explicit_reason="",
+                stability_signature=None):
         now = self._clock()
         if explicit_active:
             self.block(explicit_reason or "Steam/system activity", hard=True)
 
         changed = self._last_observed is not None and signature != self._last_observed
         self._last_observed = signature
+        stable_value = signature if stability_signature is None else stability_signature
+        stability_changed = (
+            self._last_stability_observed is not None
+            and stable_value != self._last_stability_observed
+        )
+        self._last_stability_observed = stable_value
         if changed:
-            self._last_change_at = now
             external_window = max(8.0, self.cooldown_s * 2.0)
             continuing_external = bool(
                 expected_signature is None
@@ -75,6 +82,14 @@ class VanillaGuard:
                     "repeated native LED activity" if repeated else "external LED change detected",
                     hard=repeated,
                 )
+        # Before our first write, master-brightness churn is not sufficient to
+        # prove another userspace writer owns the RGB targets. After a verified
+        # own write or takeover, every part of the full signature matters.
+        if (
+            expected_signature is not None and changed
+            or expected_signature is None and stability_changed
+        ):
+            self._last_change_at = now
 
         stable = now - self._last_change_at >= self.stable_s
         if now >= self._blocked_until and stable and not explicit_active:

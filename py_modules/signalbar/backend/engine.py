@@ -17,8 +17,9 @@ from signalbar.hardware import ValveLedHardware
 from signalbar.integration import LightEventLease, StripMineClaimReader
 from signalbar.models import GameState
 from signalbar.providers import (
-    ArtworkProvider, CountdownProvider, CustomizationProvider, EventProvider, IdleProvider,
-    LaunchArtworkProvider, PerformanceProvider, ScreenSyncProvider,
+    WITCHER3_APP_ID, ArtworkProvider, CountdownProvider, CustomizationProvider,
+    EventProvider, IdleProvider, LaunchArtworkProvider, PerformanceProvider,
+    ScreenSyncProvider, WitcherLabProvider,
 )
 from signalbar.providers.controller import ControllerProvider
 from signalbar.providers.weather import WeatherProvider
@@ -27,7 +28,7 @@ from signalbar.renderer import Renderer
 
 class Engine:
     def __init__(self, settings, cache_path, logger=None, hardware_factory=ValveLedHardware,
-                 event_lease=None, stripmine_claim=None):
+                 event_lease=None, stripmine_claim=None, witcher_installer=None):
         self.settings = settings
         self.log = logger
         self.hardware_factory = hardware_factory
@@ -47,6 +48,7 @@ class Engine:
         self.events = EventProvider()
         self.events.set_variants(settings.all())
         self.controllers = ControllerProvider()
+        self.witcher = WitcherLabProvider(installer=witcher_installer)
         self.weather = WeatherProvider()
         initial = settings.all()
         self.launch_artwork.configure(
@@ -70,9 +72,13 @@ class Engine:
         self._renderer = None
         self._guard = None
         self._decision = "none"
+        self._decision_at = 0.0
         self._owner = "Valve"
         self._suspension_reason = "starting"
         self._error = ""
+        self._last_runtime_error = ""
+        self._last_runtime_error_at = 0.0
+        self._next_witcher_lifecycle_check = 0.0
         self._available = False
         self._runtime_debug = {
             "appid": 0,
@@ -120,6 +126,7 @@ class Engine:
             self.launch_artwork.cancel()
             self.events.clear_recording()
             self.controllers.clear()
+            self.witcher.stop()
             if self._renderer:
                 self._renderer.relinquish(restore_if_owned=True)
             self.event_lease.release()
@@ -127,15 +134,36 @@ class Engine:
             self._light_event_announced_at = 0.0
             self._owner = "Valve"
             self._decision = "none"
+            self._decision_at = time.monotonic()
 
-    def set_game(self, appid=0, title="", launch=False):
+    def set_game(self, appid=0, title="", launch=False, source=""):
         try:
             appid = max(0, int(appid or 0))
         except (TypeError, ValueError):
             appid = 0
         with self._lock:
+            previous_appid = self._game.appid
             changed = appid != self._game.appid
             self._game = GameState(appid, str(title or ""))
+            witcher_transition = "steady"
+            if changed:
+                if (
+                    previous_appid == WITCHER3_APP_ID
+                    and appid == 0
+                    and str(source or "") == "poll confirmed missing lifetime stop"
+                ):
+                    witcher_transition = "soft-stop"
+                elif (
+                    previous_appid == 0
+                    and appid == WITCHER3_APP_ID
+                    and str(source or "") == "poll fallback"
+                ):
+                    witcher_transition = "soft-resume"
+                else:
+                    witcher_transition = "hard-transition"
+            self.witcher.sync_game_lifecycle(
+                appid, session_transition=witcher_transition,
+            )
             if changed:
                 # A Steam Families deadline belongs to the game session that
                 # produced it. Never leak it into the next game or after exit.
@@ -152,6 +180,13 @@ class Engine:
                 self._launch_handoff_until = time.monotonic() + 1.0
                 self._refresh_launch_palettes(self._game.appid)
                 self.launch_artwork.arm(self._game.appid)
+        if changed:
+            # Gamescope replaces/reconfigures its PipeWire producer across game
+            # transitions.  Tear the old gst-launch process down synchronously
+            # so a stale client cannot leave the next pipeline failing during
+            # its PAUSED preroll. The render loop will start a fresh capture on
+            # the next tick if Screen Sync is still requested.
+            self.screen_sync.stop()
 
     def prepare_artwork(self, appid, fingerprint, filename="", source="hero"):
         artwork_settings = self.settings.artwork_for(appid)
@@ -301,6 +336,40 @@ class Engine:
     def stop_free_timer(self):
         self.countdown.stop("free")
 
+    def update_witcher_lab(self, values):
+        with self._lock:
+            self.witcher.sync_game_lifecycle(self._game.appid)
+            enabling = isinstance(values, dict) and bool(values.get("enabled"))
+            if enabling and self._game.appid != WITCHER3_APP_ID:
+                raise ValueError(
+                    "Launch The Witcher 3 Complete Edition before enabling the experimental output"
+                )
+            self.witcher.update(values)
+        return self.status()
+
+    def trigger_witcher_sign(self, sign):
+        with self._lock:
+            if self._game.appid != WITCHER3_APP_ID:
+                return False
+            return self.witcher.trigger_sign(sign)
+
+    def stop_witcher_lab(self):
+        with self._lock:
+            self.witcher.stop_manual()
+        return self.status()
+
+    def install_witcher_telemetry_mod(self):
+        self.witcher.install_telemetry_mod()
+        with self._lock:
+            self.witcher.sync_game_lifecycle(self._game.appid)
+        return self.status()
+
+    def remove_witcher_telemetry_mod(self):
+        self.witcher.remove_telemetry_mod()
+        with self._lock:
+            self.witcher.sync_game_lifecycle(self._game.appid)
+        return self.status()
+
     def preview_countdown(self):
         self.countdown.start("preview", 15.0, total_seconds=15.0, label="Preview")
 
@@ -401,7 +470,7 @@ class Engine:
         with self._lock:
             self._runtime_debug["controller_telemetry"] = clean
 
-    def preview_controller(self, kind, variant=""):
+    def preview_controller(self, kind, variant="", count=1, target=0):
         values = self.settings.all()
         if values["mode"] == "disabled":
             return False
@@ -413,7 +482,7 @@ class Engine:
         if countdown["active"] and countdown["remaining_seconds"] <= 300:
             return False
         selected = str(kind or "")
-        played = self.controllers.preview(selected, values, str(variant or ""))
+        played = self.controllers.preview(selected, values, str(variant or ""), count, target)
         if played and selected == "low":
             self.events.clear_transients()
         return played
@@ -441,6 +510,11 @@ class Engine:
     def update_settings(self, changes):
         values = self.settings.update(changes)
         self._apply_settings(values, changes)
+        # A deliberate routing change must immediately become authoritative.
+        # Otherwise an experimental Witcher layer enabled on another page can
+        # silently keep replacing the newly selected permanent display.
+        if "game_display" in changes:
+            self.witcher.stop_manual()
         return values
 
     def import_configuration(self, global_values, display_profiles, artwork_profiles,
@@ -470,6 +544,9 @@ class Engine:
         values = self.settings.all()
         changes = {key: value for key, value in values.items() if previous.get(key) != value}
         self._apply_settings(values, changes)
+        with self._lock:
+            if int(appid or 0) == self._game.appid:
+                self.witcher.stop_manual()
         return result
 
     def reset_configuration(self):
@@ -538,6 +615,8 @@ class Engine:
             return "performance"
         if provider.startswith("screen-sync"):
             return "screen_sync"
+        if provider.startswith("witcher-lab"):
+            return "witcher"
         if provider.startswith("customization"):
             return "customization"
         if provider.startswith("weather"):
@@ -575,6 +654,32 @@ class Engine:
             )
         )
 
+    @staticmethod
+    def _screen_sync_fallback_should_run(requested, ownership_allowed,
+                                         screen_sync_frame, launch_pending=False):
+        """Avoid flashing Customization+ inside a game-launch transition.
+
+        A pending launch effect deliberately waits for Steam's native writes
+        to settle. During that interval the safe visual is the existing Valve
+        frame (or a real Screen Sync frame if capture is already ready), not an
+        unrelated permanent fallback colour.
+        """
+        return bool(
+            requested
+            and ownership_allowed
+            and screen_sync_frame is None
+            and not launch_pending
+        )
+
+    @staticmethod
+    def _native_priority_reason(hardware, signature, expected_signature):
+        # Never classify our own last verified frame as a native warning. This
+        # matters for GabeCubeAura's legitimate full-red countdown frames.
+        if expected_signature is not None and signature == expected_signature:
+            return ""
+        detector = getattr(hardware, "native_priority_reason", None)
+        return detector(signature) if callable(detector) else ""
+
     def _run(self):
         hardware = None
         renderer = None
@@ -587,6 +692,13 @@ class Engine:
             # Telemetry must not depend on LED ownership, hardware availability,
             # the chosen display, or whether a Decky panel is open.
             self.performance.refresh(self.settings.all()["performance_smoothing"])
+            with self._lock:
+                witcher_appid = self._game.appid
+            lifecycle_now = time.monotonic()
+            if lifecycle_now >= self._next_witcher_lifecycle_check:
+                self.witcher.sync_game_lifecycle(witcher_appid)
+                self._next_witcher_lifecycle_check = lifecycle_now + 2.0
+            self.witcher.refresh_telemetry(witcher_appid)
             if hardware is None:
                 if time.monotonic() < next_hardware_attempt:
                     self._stop.wait(0.1)
@@ -639,6 +751,14 @@ class Engine:
                     "everywhere" if current_display == "weather" else "off"
                 )
                 signature = hardware.read_signature()
+                stability_signature = getattr(hardware, "stability_signature", None)
+                stability_signature = (
+                    stability_signature(signature)
+                    if callable(stability_signature) else signature
+                )
+                native_priority_reason = self._native_priority_reason(
+                    hardware, signature, renderer.last_signature,
+                )
                 # A new native write during our animation ends that animation
                 # immediately; otherwise the two writers would fight each tick.
                 event_interrupted = (
@@ -648,8 +768,9 @@ class Engine:
                 allowed = guard.observe(
                     signature,
                     expected_signature=renderer.last_signature,
-                    explicit_active=explicit,
-                    explicit_reason=explicit_reason,
+                    explicit_active=explicit or bool(native_priority_reason),
+                    explicit_reason=explicit_reason if explicit else native_priority_reason,
+                    stability_signature=stability_signature,
                 )
                 recovering_ownership = bool(
                     allowed and not self._guard_was_allowed and guard.last_external_at
@@ -702,6 +823,11 @@ class Engine:
                 )
                 screen_sync_requested = bool(activation_reason)
                 recording = self.events.recording
+                witcher_output = self.witcher.output(game.appid)
+                # Capture activation belongs to Screen Sync's own lease.  An
+                # armed Witcher lab must not silently prevent the real capture
+                # path from starting; the arbiter decides which ready frame is
+                # displayed below.
                 screen_sync_active = self._screen_sync_should_run(
                     values, screen_sync_requested, signal_critical, allowed,
                     stripmine_active, recording, steam_priority,
@@ -723,10 +849,12 @@ class Engine:
                     not stripmine_active
                     or values["stripmine_priority_screen_sync"] == "signalbar"
                 )
-                screen_sync_fallback_active = (
-                    screen_sync_requested
-                    and screen_sync_ownership_allowed
-                    and screen_sync_base.frame is None
+                launch_transition_pending = self.launch_artwork.status(game.appid)["pending"]
+                screen_sync_fallback_active = self._screen_sync_fallback_should_run(
+                    screen_sync_requested,
+                    screen_sync_ownership_allowed,
+                    screen_sync_base.frame,
+                    launch_transition_pending,
                 )
                 customization_base = self.customization.output(
                     values,
@@ -768,6 +896,14 @@ class Engine:
                     event, controller_event, launch_artwork, customization_base,
                 )) else 0.10
                 effective_mode = "screen_sync" if screen_sync_requested else values["mode"]
+                # A manual Screen Sync preview and an explicitly selected
+                # Screen Sync game route are authoritative display requests.
+                # They temporarily replace the lab without disabling it, so a
+                # preview returns to the Witcher output when its lease expires.
+                witcher_for_decision = (
+                    None if activation_reason in {"manual-preview", "game-route"}
+                    else witcher_output
+                )
                 decision = self.arbiter.choose(
                     mode=effective_mode, guard_allows=allowed or stripmine_active, game=game,
                     performance=performance, artwork=artwork, idle=self.idle.output(),
@@ -780,6 +916,7 @@ class Engine:
                         customization_base if screen_sync_fallback_active else None
                     ),
                     launch_artwork=launch_artwork,
+                    witcher=witcher_for_decision,
                     recording_marker=(
                         self.events.recording and values["events_enabled"]
                         and values["event_recording_enabled"]
@@ -891,19 +1028,38 @@ class Engine:
                     self._owner = owner
                     self._suspension_reason = suspension
                     self._error = ""
+                    self._decision_at = time.monotonic()
             except Exception as error:
                 self.screen_sync.set_active(False)
-                renderer.relinquish(restore_if_owned=False)
+                # A provider or renderer fault must not leave the last plugin
+                # frame frozen on the strip. Renderer restores the saved
+                # Valve state only if the hardware still matches our verified
+                # signature; otherwise it safely leaves the external writer
+                # alone.
+                renderer.relinquish(restore_if_owned=True)
                 self.event_lease.release()
                 self.stripmine_claim.release()
                 self._light_event_announced_at = 0.0
                 with self._lock:
+                    self._available = False
                     self._owner = "Valve"
                     self._decision = "none"
-                    self._suspension_reason = "renderer failure; yielded to Valve"
+                    self._suspension_reason = "runtime failure; restored Valve and retrying"
                     self._error = str(error)
-                self._warn(f"render loop stopped after failure: {error}")
-                return
+                    self._last_runtime_error = str(error)
+                    self._last_runtime_error_at = time.monotonic()
+                    self._decision_at = time.monotonic()
+                    self._renderer = None
+                    self._guard = None
+                self._warn(f"render loop fault; restored Valve and retrying: {error}")
+                hardware = None
+                renderer = None
+                guard = None
+                event_was_active = False
+                event_preempted_valve = False
+                self._guard_was_allowed = False
+                next_hardware_attempt = time.monotonic() + 0.5
+                continue
 
         if renderer is not None:
             renderer.relinquish(restore_if_owned=True)
@@ -1026,6 +1182,21 @@ class Engine:
                 "fallback_active": fallback_active,
                 "fallback_reason": fallback_reason,
             })
+            witcher_status = self.witcher.status(self._game.appid)
+            witcher_selected = bool(
+                self._owner == "GabeCubeAura"
+                and self._decision.startswith("witcher-lab")
+            )
+            witcher_status.update({
+                "armed": bool(witcher_status["enabled"] and witcher_status["eligible"]),
+                "selected": witcher_selected,
+                # Keep `active` truthful at the physical-output boundary.
+                "active": witcher_selected,
+            })
+            engine_running = bool(self._thread and self._thread.is_alive())
+            decision_age_s = (
+                max(0.0, now - self._decision_at) if self._decision_at else None
+            )
             return {
                 "version": __version__,
                 "available": self._available,
@@ -1109,10 +1280,15 @@ class Engine:
                 "controller_low_variant": values["controller_low_variant"],
                 "controller_charging_variant": values["controller_charging_variant"],
                 "controller_duo_variant": values["controller_duo_variant"],
+                "controller_colour_mode": values["controller_colour_mode"],
                 "controller_colour_normal": values["controller_colour_normal"],
                 "controller_colour_medium": values["controller_colour_medium"],
                 "controller_colour_low": values["controller_colour_low"],
                 "controller_colour_charging": values["controller_colour_charging"],
+                "controller_player_colour_1": values["controller_player_colour_1"],
+                "controller_player_colour_2": values["controller_player_colour_2"],
+                "controller_player_colour_3": values["controller_player_colour_3"],
+                "controller_player_colour_4": values["controller_player_colour_4"],
                 "controller_gauge_brightness": values["controller_gauge_brightness"],
                 "weather_display": values["weather_display"],
                 "weather_location": values["weather_location"],
@@ -1130,12 +1306,14 @@ class Engine:
                 "stripmine_priority_game_launches": values["stripmine_priority_game_launches"],
                 "stripmine_priority_customization": values["stripmine_priority_customization"],
                 "stripmine_priority_screen_sync": values["stripmine_priority_screen_sync"],
+                "stripmine_priority_witcher": values["stripmine_priority_witcher"],
                 **{key: values[key] for key in values if key.startswith("weather_") and key.endswith("_variant")},
                 "weather": weather_status,
                 "customization": customization_status,
                 "screen_sync": screen_sync_status,
                 "controllers": controller_status,
                 "events": self.events.status(),
+                "witcher": witcher_status,
                 "game": {"appid": self._game.appid, "title": self._game.title},
                 "performance": {
                     "sample_age_s": max(0.0, now - sample.sampled_at) if sample.sampled_at else None,
@@ -1171,6 +1349,13 @@ class Engine:
                     ),
                     "last_recovery_reason": self._last_recovery_reason,
                     "reverse_led_order": values["reverse_led_order"],
+                    "engine_running": engine_running,
+                    "decision_age_s": decision_age_s,
+                    "last_runtime_error": self._last_runtime_error,
+                    "last_runtime_error_age_s": (
+                        max(0.0, now - self._last_runtime_error_at)
+                        if self._last_runtime_error_at else None
+                    ),
                     **runtime_debug,
                 },
             }

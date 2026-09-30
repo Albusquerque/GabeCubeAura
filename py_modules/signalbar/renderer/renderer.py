@@ -20,6 +20,7 @@ class Renderer:
         self._last_write_at = 0.0
         self._last_successful_write_at = 0.0
         self._saved_frame: Optional[Frame] = None
+        self._saved_state = None
         self._failed = False
         self._writes = 0
 
@@ -57,7 +58,15 @@ class Renderer:
                 return False
             try:
                 if self._saved_frame is None:
-                    self._saved_frame = self.hardware.read_frame()
+                    capture_state = getattr(self.hardware, "capture_state", None)
+                    if callable(capture_state):
+                        self._saved_state = capture_state()
+                        self._saved_frame = self._saved_state["frame"]
+                    else:
+                        self._saved_frame = self.hardware.read_frame()
+                    claim_manual_control = getattr(self.hardware, "claim_manual_control", None)
+                    if callable(claim_manual_control):
+                        claim_manual_control()
                 self.hardware.write_frame(clean)
                 self._last_signature = self.hardware.read_signature()
             except OSError:
@@ -78,12 +87,17 @@ class Renderer:
             if restore_if_owned and self._saved_frame is not None and self._last_signature is not None:
                 try:
                     if self.hardware.read_signature() == self._last_signature:
-                        self.hardware.try_restore(self._saved_frame)
+                        restore_state = getattr(self.hardware, "try_restore_state", None)
+                        if self._saved_state is not None and callable(restore_state):
+                            restore_state(self._saved_state)
+                        else:
+                            self.hardware.try_restore(self._saved_frame)
                         restored = True
                 except OSError:
                     self._failed = True
             self._last_frame = None
             self._last_signature = None
             self._saved_frame = None
+            self._saved_state = None
             self._last_write_at = 0.0
             return restored

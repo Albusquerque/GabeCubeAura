@@ -9,6 +9,7 @@ from __future__ import annotations
 import colorsys
 import json
 import os
+import pwd
 import select
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ CAPTURE_WIDTH = 34
 CAPTURE_HEIGHT = 18
 BYTES_PER_PIXEL = 4
 FRAME_BYTES = CAPTURE_WIDTH * CAPTURE_HEIGHT * BYTES_PER_PIXEL
+CAPTURE_REVISION = "beta3-session-launch-v3"
 
 VALID_STYLES = {"panorama", "ambient"}
 VALID_REACTIVITY = {"calm", "balanced", "fast"}
@@ -219,6 +221,7 @@ class ScreenCaptureService:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread = None
+        self._process = None
         self._active = False
         self._frame = None
         self._frame_at = 0.0
@@ -227,13 +230,18 @@ class ScreenCaptureService:
         self._error = ""
         self._node_id = None
         self._node_name = ""
+        self._runtime_dir_used = ""
+        self._capture_identity = ""
+        self._discovery_detail = ""
+        self._selector_mode = "target-object"
+        self._capture_selector = ""
         self._conflicting_consumers = 0
         self._stderr = deque(maxlen=12)
         self._frames_seen = 0
         self._started_at = 0.0
 
     @staticmethod
-    def _runtime_dir():
+    def _runtime_dirs():
         candidates = []
         configured = os.environ.get("XDG_RUNTIME_DIR")
         if configured:
@@ -248,17 +256,24 @@ class ScreenCaptureService:
             )
         except OSError:
             pass
-        for candidate in dict.fromkeys(candidates):
-            if os.path.exists(os.path.join(candidate, "pipewire-0")):
-                return candidate
-        return configured or ""
+        return [
+            candidate for candidate in dict.fromkeys(candidates)
+            if os.path.exists(os.path.join(candidate, "pipewire-0"))
+        ]
+
+    @classmethod
+    def _runtime_dir(cls):
+        """Return the first candidate for compatibility with older callers."""
+        candidates = cls._runtime_dirs()
+        return candidates[0] if candidates else ""
 
     @staticmethod
     def _node_label(item):
         props = (item.get("info") or {}).get("props") or {}
-        return " ".join(str(props.get(key, "")) for key in (
-            "node.name", "node.description", "media.name", "application.name"
-        )).strip()
+        return " ".join(filter(None, (str(props.get(key, "")).strip() for key in (
+            "node.name", "node.nick", "node.description", "media.name", "media.title",
+            "application.name",
+        )))).strip()
 
     @classmethod
     def find_gamescope_node(cls, dump):
@@ -270,12 +285,17 @@ class ScreenCaptureService:
             label = cls._node_label(item)
             lowered = label.lower()
             media_class = str(props.get("media.class", "")).lower()
-            if "video" not in media_class and "video" not in lowered:
-                continue
+            node_name = str(props.get("node.name", "")).strip().lower()
+            description = str(props.get("node.description", "")).strip().lower()
+            exact_gamescope = node_name == "gamescope" or description == "gamescope"
             if any(term in lowered for term in ("camera", "v4l2", "loopback")):
                 continue
+            if not exact_gamescope and "video" not in media_class and "video" not in lowered:
+                continue
             score = 0
-            if "gamescope" in lowered:
+            if exact_gamescope:
+                score += 200
+            elif "gamescope" in lowered:
                 score += 100
             if "steam" in lowered and "game" in lowered:
                 score += 20
@@ -303,6 +323,37 @@ class ScreenCaptureService:
                 count += 1
         return count
 
+    @staticmethod
+    def _runtime_owner(runtime_dir):
+        """Return the user owning a /run/user/<uid> PipeWire session."""
+        try:
+            uid = int(os.path.basename(os.path.normpath(str(runtime_dir))))
+            account = pwd.getpwuid(uid)
+        except (KeyError, TypeError, ValueError):
+            return None
+        return uid, account.pw_name
+
+    @classmethod
+    def _command_for_runtime(cls, command, runtime_dir):
+        """Run PipeWire clients as the session owner when Decky runs as root.
+
+        PipeWire registry permissions are attached to the connecting Unix
+        identity.  A root Decky backend can reach the UID 1000 socket yet see a
+        different or restricted registry, so discovery and capture must use the
+        owner of that runtime directory.
+        """
+        owner = cls._runtime_owner(runtime_dir)
+        effective_uid = os.geteuid() if hasattr(os, "geteuid") else -1
+        if owner is None:
+            return list(command), f"uid {effective_uid}"
+        uid, username = owner
+        if effective_uid != 0 or uid == effective_uid:
+            return list(command), f"{username} (uid {uid})"
+        runuser = shutil.which("runuser")
+        if not runuser:
+            return list(command), f"root fallback; {username} runuser unavailable"
+        return [runuser, "-u", username, "--", *command], f"{username} (uid {uid})"
+
     def _pipewire_dump(self, runtime_dir):
         executable = shutil.which("pw-dump")
         if not executable:
@@ -310,13 +361,115 @@ class ScreenCaptureService:
         environment = dict(os.environ)
         if runtime_dir:
             environment["XDG_RUNTIME_DIR"] = runtime_dir
+        command, identity = self._command_for_runtime([executable], runtime_dir)
+        with self._lock:
+            self._capture_identity = identity
         result = self._run_command(
-            [executable], capture_output=True, text=True, timeout=2.0,
+            command, capture_output=True, text=True, timeout=2.0,
             check=False, env=environment,
         )
         if result.returncode:
             raise RuntimeError((result.stderr or "pw-dump failed").strip()[-240:])
         return json.loads(result.stdout)
+
+    def _discover_gamescope_node(self):
+        """Search every local PipeWire session and retain a direct-name fallback.
+
+        Current Gamescope consumers can connect with ``target-object=gamescope``
+        even when registry enumeration omits the producer node.  Discovery is
+        therefore useful for diagnostics, legacy numeric capture and conflict
+        checks, but it is no longer a prerequisite for starting Screen Sync.
+        """
+        runtime_dirs = self._runtime_dirs()
+        if not runtime_dirs:
+            raise RuntimeError("PipeWire session was not found")
+
+        failures = []
+        visible_video_nodes = []
+        direct_candidate = None
+        for runtime_dir in runtime_dirs:
+            try:
+                dump = self._pipewire_dump(runtime_dir)
+            except Exception as error:
+                failures.append(f"{runtime_dir}: {str(error)[:100]}")
+                continue
+            candidate_uid = self._runtime_owner(runtime_dir)
+            current_uid = (
+                self._runtime_owner(direct_candidate[0])
+                if direct_candidate is not None else None
+            )
+            if (direct_candidate is None
+                    or current_uid is not None and current_uid[0] == 0
+                    and candidate_uid is not None and candidate_uid[0] != 0):
+                direct_candidate = (runtime_dir, dump)
+            node = self.find_gamescope_node(dump)
+            if node is not None:
+                with self._lock:
+                    self._runtime_dir_used = runtime_dir
+                    self._discovery_detail = f"Gamescope found in {runtime_dir}"
+                return runtime_dir, node, dump
+            for item in dump if isinstance(dump, list) else []:
+                if item.get("type") != "PipeWire:Interface:Node":
+                    continue
+                props = (item.get("info") or {}).get("props") or {}
+                if "video" in str(props.get("media.class", "")).lower():
+                    label = self._node_label(item)
+                    if label:
+                        visible_video_nodes.append(label[:80])
+
+        searched = ", ".join(runtime_dirs)
+        if direct_candidate is not None:
+            runtime_dir, dump = direct_candidate
+            detail = (
+                f"No enumerated Gamescope node in {searched}; "
+                "trying target-object=gamescope directly"
+            )
+            if visible_video_nodes:
+                detail += "; video nodes: " + ", ".join(
+                    dict.fromkeys(visible_video_nodes)
+                )[:160]
+            with self._lock:
+                self._runtime_dir_used = runtime_dir
+                self._discovery_detail = detail
+                self._node_id = None
+                self._node_name = "gamescope (direct name)"
+            return runtime_dir, None, dump
+
+        detail = f"No Gamescope node in {searched}"
+        if visible_video_nodes:
+            detail += "; video nodes: " + ", ".join(dict.fromkeys(visible_video_nodes))[:160]
+        elif failures:
+            detail += "; " + "; ".join(failures)[:160]
+        with self._lock:
+            self._runtime_dir_used = ""
+            self._discovery_detail = detail
+            self._node_id = None
+            self._node_name = ""
+        raise RuntimeError(detail)
+
+    @staticmethod
+    def _capture_command(gst, node_id, selector_mode="target-object"):
+        selector = (
+            "target-object=gamescope"
+            if selector_mode in {"target-object", "target-object-compat"}
+            else f"path={int(node_id)}"
+        )
+        source = [
+            gst, "-q", "pipewiresrc", selector, "do-timestamp=true",
+            "client-name=GabeCubeAura-Screen-Sync",
+        ]
+        if selector_mode == "target-object":
+            # Current PipeWire keeps a variable-rate Gamescope source alive
+            # between compositor updates. Older plugins may not expose this
+            # property, in which case supervision retries with the node ID.
+            source.append("keepalive-time=33")
+        return source + [
+            "!", "queue", "max-size-buffers=1", "leaky=downstream",
+            "!", "videoconvert", "!", "videoscale", "method=1",
+            "!", "videorate", "drop-only=true",
+            "!", "video/x-raw,format=BGRx,width=34,height=18,framerate=10/1",
+            "!", "fdsink", "fd=1", "sync=false",
+        ]
 
     def set_active(self, active):
         active = bool(active)
@@ -327,25 +480,40 @@ class ScreenCaptureService:
                 self._phase = "off"
                 self._error = ""
                 self._conflicting_consumers = 0
-        if not changed:
-            return
-        self._wake.set()
-        if active and (self._thread is None or not self._thread.is_alive()):
-            self._stop.clear()
-            self._thread = threading.Thread(
-                target=self._supervise, name="gabecubeaura-screen-capture", daemon=True
-            )
-            self._thread.start()
+            elif changed:
+                self._selector_mode = "target-object"
+                self._capture_selector = ""
+            # A game transition can request a stop while discovery or process
+            # cleanup is still unwinding.  The provider calls this method on
+            # every render tick, so recreate a dead supervisor even if the
+            # logical active flag was already true on the previous tick.
+            if active and (self._thread is None or not self._thread.is_alive()):
+                self._stop.clear()
+                self._thread = threading.Thread(
+                    target=self._supervise,
+                    name="gabecubeaura-screen-capture",
+                    daemon=True,
+                )
+                self._thread.start()
+        if changed:
+            self._wake.set()
 
     def stop(self):
         self._stop.set()
         self._wake.set()
+        with self._lock:
+            process = self._process
+        if process is not None and process.poll() is None:
+            process.terminate()
         thread = self._thread
         if thread and thread.is_alive():
-            thread.join(timeout=2.0)
+            thread.join(timeout=3.5)
         with self._lock:
             self._active = False
             self._phase = "off"
+            if self._thread is not None and not self._thread.is_alive():
+                self._thread = None
+            self._process = None
 
     def latest(self):
         with self._lock:
@@ -356,10 +524,16 @@ class ScreenCaptureService:
             age = max(0.0, self._clock() - self._frame_at) if self._frame_at else None
             elapsed = max(0.001, self._clock() - self._started_at) if self._started_at else 0.0
             return {
+                "revision": CAPTURE_REVISION,
                 "phase": self._phase,
                 "error": self._error,
                 "node_id": self._node_id,
                 "node_name": self._node_name,
+                "runtime_dir": self._runtime_dir_used,
+                "capture_identity": self._capture_identity,
+                "discovery_detail": self._discovery_detail,
+                "capture_selector": self._capture_selector,
+                "stderr_tail": list(self._stderr),
                 "conflicting_consumers": self._conflicting_consumers,
                 "frame_age_s": age,
                 "frames_per_second": self._frames_seen / elapsed if elapsed else 0.0,
@@ -384,19 +558,22 @@ class ScreenCaptureService:
                 self._wait(0.25)
                 continue
             process = None
+            captured_frame = False
+            selector_mode = self._selector_mode
             try:
-                runtime_dir = self._runtime_dir()
-                if not runtime_dir:
-                    raise RuntimeError("PipeWire session was not found")
                 gst = shutil.which("gst-launch-1.0")
                 if not gst:
                     raise RuntimeError("GStreamer is not installed")
-                dump = self._pipewire_dump(runtime_dir)
-                node = self.find_gamescope_node(dump)
+                runtime_dir, node, dump = self._discover_gamescope_node()
                 if node is None:
-                    raise RuntimeError("Gamescope video source was not found")
-                node_id, node_name = node
-                consumers = self.count_consumers(dump, node_id)
+                    node_id, node_name = None, "gamescope (direct name)"
+                else:
+                    node_id, node_name = node
+                if selector_mode == "path" and node_id is None:
+                    selector_mode = "target-object-compat"
+                    with self._lock:
+                        self._selector_mode = selector_mode
+                consumers = self.count_consumers(dump, node_id) if node_id is not None else 0
                 with self._lock:
                     self._node_id, self._node_name = node_id, node_name
                 if consumers:
@@ -405,18 +582,24 @@ class ScreenCaptureService:
                     continue
                 environment = dict(os.environ)
                 environment["XDG_RUNTIME_DIR"] = runtime_dir
-                command = [
-                    gst, "-q", "pipewiresrc", f"path={node_id}", "do-timestamp=true",
-                    "!", "queue", "max-size-buffers=1", "leaky=downstream",
-                    "!", "videoconvert", "!", "videoscale", "method=1",
-                    "!", "videorate", "drop-only=true",
-                    "!", "video/x-raw,format=BGRx,width=34,height=18,framerate=10/1",
-                    "!", "fdsink", "fd=1", "sync=false",
-                ]
+                command = self._capture_command(gst, node_id, selector_mode)
+                command, identity = self._command_for_runtime(command, runtime_dir)
+                with self._lock:
+                    self._stderr.clear()
+                    self._capture_identity = identity
+                    self._capture_selector = (
+                        "gamescope name"
+                        if selector_mode == "target-object"
+                        else "gamescope name (compatibility)"
+                        if selector_mode == "target-object-compat"
+                        else f"legacy node {node_id}"
+                    )
                 process = self._popen(
                     command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     stdin=subprocess.DEVNULL, env=environment, bufsize=0,
                 )
+                with self._lock:
+                    self._process = process
                 os.set_blocking(process.stdout.fileno(), False)
                 os.set_blocking(process.stderr.fileno(), False)
                 buffer = bytearray()
@@ -448,6 +631,7 @@ class ScreenCaptureService:
                                     self._frame_at = last_frame
                                     self._sequence += 1
                                     self._frames_seen += 1
+                                captured_frame = True
                     if process.stderr.fileno() in readable:
                         message = os.read(process.stderr.fileno(), 2048).decode("utf-8", "replace").strip()
                         if message:
@@ -457,7 +641,10 @@ class ScreenCaptureService:
                         raise RuntimeError("Gamescope capture stopped producing frames")
                     if now - last_conflict_check >= 2.0:
                         current = self._pipewire_dump(runtime_dir)
-                        consumers = self.count_consumers(current, node_id)
+                        consumers = (
+                            self.count_consumers(current, node_id)
+                            if node_id is not None else 0
+                        )
                         if consumers > 1:
                             self._set_state(
                                 "conflict", "Another Gamescope capture consumer appeared",
@@ -469,6 +656,25 @@ class ScreenCaptureService:
                     detail = self._stderr[-1] if self._stderr else "GStreamer capture stopped"
                     raise RuntimeError(detail)
             except Exception as error:
+                if selector_mode == "target-object" and process is not None and not captured_frame:
+                    self._selector_mode = "target-object-compat"
+                    self._set_state(
+                        "error",
+                        "Gamescope keepalive selector failed; retrying compatibility mode",
+                    )
+                    backoff = 0.1
+                    self._wait(backoff)
+                    continue
+                if (selector_mode == "target-object-compat" and node_id is not None
+                        and process is not None and not captured_frame):
+                    self._selector_mode = "path"
+                    self._set_state(
+                        "error",
+                        "Named Gamescope selector failed; retrying the legacy node ID",
+                    )
+                    backoff = 0.1
+                    self._wait(backoff)
+                    continue
                 with self._lock:
                     conflict = self._phase == "conflict"
                 if not conflict:
@@ -483,6 +689,9 @@ class ScreenCaptureService:
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait(timeout=1.0)
+                with self._lock:
+                    if self._process is process:
+                        self._process = None
 
 
 class ScreenSyncProvider:
@@ -498,11 +707,14 @@ class ScreenSyncProvider:
         active = bool(active)
         if active != self._active:
             self._active = active
-            self.capture.set_active(active)
             if not active:
                 self.processor.reset()
                 self._sequence = -1
                 self._frame = None
+        # Also acts as an idempotent liveness check. A stopped supervisor may
+        # finish just after a game transition; the next tick must spawn its
+        # replacement instead of leaving Screen Sync logically on but dead.
+        self.capture.set_active(active)
 
     def stop(self):
         self._active = False

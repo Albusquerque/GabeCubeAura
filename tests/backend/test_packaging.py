@@ -9,8 +9,11 @@ class PackagingTests(unittest.TestCase):
             "main.py", "plugin.json", "package.json", "LICENSE",
             "THIRD_PARTY_NOTICES.md", "scripts/package_plugin.py",
             "docs/SCREEN_SYNC.md", "docs/SCREEN_SYNC_INTEGRATION_PLAN.md",
-            "docs/BETA_TEST_PLAN_1.2.0-beta1.md",
-            "docs/RELEASE_NOTES_1.2.0-beta1.md",
+            "docs/BETA_TEST_PLAN_1.2.0-beta3.md",
+            "docs/RELEASE_NOTES_1.2.0-beta3.md",
+            "scripts/package_witcher_mod.py",
+            "witcher_mod/README.md",
+            "witcher_mod/mods/modGabeCubeAuraTelemetry/content/scripts/local/gca_telemetry.ws",
         ):
             self.assertTrue((root / relative).is_file(), relative)
         self.assertTrue((root / "py_modules/signalbar/backend/engine.py").is_file())
@@ -20,6 +23,8 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("py_modules/signalbar/backend/engine.py", packaged)
         self.assertIn("py_modules/signalbar/updates.py", packaged)
         self.assertIn("py_modules/signalbar/update_helper.py", packaged)
+        self.assertIn("py_modules/signalbar/witcher_install.py", packaged)
+        self.assertIn("witcher_mod/mods/modGabeCubeAuraTelemetry/content/scripts/local/gca_telemetry.ws", packaged)
         self.assertFalse(any(path.startswith("assets/") for path in packaged))
         self.assertFalse(any(path.startswith("docs/") for path in packaged))
 
@@ -30,7 +35,13 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.2.0-beta1"', package)
+        self.assertIn('"version": "1.2.0-beta3"', package)
+        self.assertIn('"author": "Alyenax"', manifest)
+        self.assertIn('"author": "Alyenax"', package)
+        self.assertIn('label="Colour meaning"', panel)
+        self.assertIn('label="Controllers in preview"', panel)
+        self.assertIn('label="Preview controller"', panel)
+        self.assertNotIn('label="Seat direction"', panel)
         self.assertIn('"url": "git+https://github.com/Alyenax/GabeCubeAura.git"', package)
         self.assertNotIn("Albusquerque/GabeCubeAura", package)
         self.assertIn('routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings)', panel)
@@ -91,6 +102,14 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('label="Notify me when an update is available"', panel)
         self.assertIn('Update lab · TEST BUILD', panel)
         self.assertIn('stripmine_priority_screen_sync', panel)
+        self.assertIn('stripmine_priority_witcher', panel)
+        self.assertIn('installWitcherTelemetryMod', panel)
+        self.assertIn('removeWitcherTelemetryMod', panel)
+        self.assertIn('Reset / remove gca_telemetry.ws', panel)
+        self.assertIn('Export Witcher + Screen Sync diagnostics', panel)
+        self.assertIn('Script file installed and verified', panel)
+        self.assertIn('route: "/gabecubeaura/settings/witcher"', panel)
+        self.assertIn('<WitcherPanel status={status}', panel)
         self.assertIn('{ data: "screen_sync", label: "Screen Sync" }', panel)
         self.assertIn('<ScreenSyncPanel status={status}', panel)
         self.assertIn('label="Refresh capture status"', panel)
@@ -118,6 +137,16 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('Path("GabeCubeAura") / relative', packager)
         self.assertIn('FIXED_OUTPUT = ROOT / "out" / "GabeCubeAura.zip"', packager)
         self.assertIn('CHECKSUMS = ROOT / "out" / "SHA256SUMS"', packager)
+        self.assertIn('witcher_mod/mods/modGabeCubeAuraTelemetry', packager)
+
+        witcher_packager = (root / "scripts/package_witcher_mod.py").read_text(encoding="utf-8")
+        self.assertIn('GabeCubeAura-Witcher3-Telemetry-v{VERSION}.zip', witcher_packager)
+        witcher_script = (root / "witcher_mod/mods/modGabeCubeAuraTelemetry/content/scripts/local/gca_telemetry.ws").read_text(encoding="utf-8")
+        self.assertIn("@wrapMethod(W3PlayerWitcher)", witcher_script)
+        self.assertIn("BCS_Vitality", witcher_script)
+        self.assertIn("OnSignCastPerformed", witcher_script)
+        self.assertIn('WriteIniFile("GabeCubeAuraTelemetry.ini"', witcher_script)
+        self.assertIn('"state_stamp"', witcher_script)
 
         updates = (root / "py_modules/signalbar/updates.py").read_text(encoding="utf-8")
         helper = (root / "py_modules/signalbar/update_helper.py").read_text(encoding="utf-8")

@@ -1,5 +1,136 @@
 # Changelog
 
+## 1.2.0-beta3 - 2026-09-30
+
+- Publish this build as an opt-in GitHub prerelease under Alyenax, with no
+  generated-agent attribution and no GitHub Actions release workflow.
+- Make Beta-channel changes check immediately, restore update-transaction
+  recovery and isolate the installer helper from Decky's bundled libraries.
+- Add README demonstrations for Screen Sync, the experimental Witcher HUD and
+  four-controller support, plus exact Steam and Proton setup instructions.
+- Use Alyenax as the package, plugin and license identity.
+- Preserve a live, already-verified Witcher HUD across a false game-stop
+  inferred only from an empty Steam running-app poll. The physical output is
+  still released while no game is detected, but the same AppID can resume
+  without falling back to Customization+ until another telemetry record.
+  Authoritative Steam lifetime stops still clear the proof for a new session.
+- Include the master output switch and complete display-routing state in the
+  Witcher diagnostic export so an underlying Customization+ route is visible.
+- Install the WitcherScript bridge in the documented lower-case `mods`
+  directory. Detect and safely migrate the former upper-case `Mods` path,
+  which can look checksum-valid while remaining invisible on SteamOS's
+  case-sensitive filesystem.
+- Add an always-visible **Reset / remove gca_telemetry.ws** action that checks
+  both path variants, restores GabeCubeAura's backup and preserves unknown
+  modified content instead of deleting it.
+- Add a direct bounded `GabeCubeAuraTelemetry.ini` transport in the AppID
+  292030 Proton Documents folder. Keep namespaced `scriptlog.txt` records as a
+  fallback so live HUD data no longer depends solely on debug-log flushing.
+- Add a one-button Witcher + Screen Sync diagnostic export to
+  `Documents/GabeCubeAura-Witcher3-diagnostics.json`, including exact paths,
+  checksums, ownership, transport, bounded relevant logs and GStreamer stderr.
+- Fully terminate the current GStreamer process on each game AppID transition
+  and make the capture supervisor self-restart if cleanup finishes after the
+  next Screen Sync request. This prevents a stale Gamescope client from leaving
+  the replacement pipeline stuck during PAUSED preroll.
+- Keep an armed Witcher lab from suppressing Screen Sync capture, and let an
+  explicit Screen Sync route or 15-second preview temporarily replace the lab.
+- Suppress the orange Customization+ capture fallback while a Game Launches
+  effect is pending, leaving the verified Valve frame or an already-live Screen
+  Sync frame visible until the launch animation starts.
+- Distinguish a Witcher lab that is merely armed from one actually selected on
+  the physical bar; expose render-loop liveness, decision age and the last
+  retained runtime fault on both diagnostic pages.
+- Recover the render loop after an isolated provider or hardware fault instead
+  of stopping permanently: restore Valve's saved state only while the verified
+  signature is still ours, then retry the hardware path.
+- Fix Screen Sync discovery across multiple local PipeWire sessions and sparse
+  Gamescope node metadata. If `pw-dump` does not enumerate Gamescope, try its
+  stable `target-object=gamescope` name directly, then compatibility and legacy
+  selectors when available, and expose bounded diagnostics in the settings page.
+- Run PipeWire discovery and GStreamer capture as the owner of the selected
+  `/run/user/<uid>` session when Decky's root backend would otherwise connect
+  with the wrong identity; show that identity on the Screen Sync page.
+- Reject stale `MainRunningApp` data when Steam's live running-app collection
+  no longer contains the game, so Home routing returns after exit.
+- Add an in-game experimental The Witcher 3 Complete Edition laboratory,
+  activated only for Steam AppID `292030`.
+- Add an optional WitcherScript companion mod and Proton state/log reader for
+  live vitality, stamina, toxicity, adrenaline and combat telemetry.
+- React to real Aard, Axii, Igni, Quen and Yrden casts using short centre-out
+  waves; retain the manual controls as a clearly labelled fallback.
+- Expire live telemetry after 1.5 seconds and expose source, age, path and read
+  errors in the Decky page instead of silently replaying stale game values.
+- Add an install/repair action at the top of the Witcher page. It discovers the
+  AppID 292030 Steam library, atomically installs the bundled script and backs
+  up different existing content before replacement.
+- Add a removal action beside the installer. It deletes only the checksum-
+  verified GabeCubeAura script, restores the pre-install backup when present,
+  and preserves unknown modified content instead of destroying it.
+- Keep Steam activity, launch animations, light events and playtime countdowns
+  above the experimental display, and stop it automatically when the game exits.
+- Add explicit StripMine ownership priority for the Witcher laboratory.
+- Correct physical ownership of the Valve LED controller: select its `manual`
+  hardware effect before per-pixel writes, enable the strip for the lease, and
+  restore the previous Valve effect and enabled state on release.
+- Let startup ownership settle across brightness-only changes while continuing
+  to yield immediately to any full-signature change after GabeCubeAura writes.
+- Show the actual physical owner and provider directly in the Witcher page.
+- Fix telemetry discovery to read WitcherScript's actual `scriptlog.txt`
+  filename instead of waiting on the incorrect plural path.
+- Correct the launch-option instructions to require the complete
+  `-net -debugscripts` pair used by WitcherScript `LogChannel`; the earlier
+  `-debugscripts`-only instruction could leave an installed bridge silent.
+- Diagnose the saved AppID 292030 Steam launch options, the active
+  `DebugScriptsForceFlush` setting, and the bounded Proton log paths directly
+  in the Witcher page instead of asking the user to infer them.
+- Stop the experimental Witcher output when the user explicitly changes the
+  current game's route or the default in-game display, so Performance and
+  Artwork cannot remain hidden behind a stale laboratory layer.
+- Consult Steam's full running-app list and clear a latched game after a
+  bounded series of empty polls when Steam misses its lifetime-stop callback.
+- Clarify that an installed and checksum-verified script is not yet proof of a
+  live telemetry stream, and that manual fallback values remain static.
+- Automatically arm the Witcher Lab as soon as AppID 292030 launches with the
+  checksum-verified bridge installed, and disarm it on exit. A checksum-valid
+  but silent bridge emits no simulated HUD frame; physical Witcher output waits
+  for the first real `GCA1` record in the current session.
+- Keep Steam's download animation, native system activity and critical fixed
+  red thermal warning above both manual and automatically managed Witcher
+  output, then allow the verified game session to resume after Valve releases
+  its lease.
+
+## 1.2.0-beta2 - 2026-09-30
+
+- Add fixed battery seats for one to four controllers.
+- Keep automatic mirrored layouts for two and four controllers, with three
+  left-to-right zones for three controllers.
+- Extend Twin reveal, Two signatures and Mirror greeting to every active seat
+  without renaming the existing patterns.
+- Add Battery level and Player seats colour meanings, including editable P1 to
+  P4 colours.
+- Add local one-to-four controller previews and a target selector without
+  modifying Steam's detected roster.
+- Keep Current, Breathing current and Spark charging signals inside the actual
+  or previewed P1, P2, P3 or P4 seat instead of always animating P1.
+- Set the four default Player seats colours to 55 percent Lightness in the
+  colour picker and migrate only the former defaults, without replacing custom
+  colours.
+- Use the multiplayer connection animation when a third or fourth controller
+  joins.
+- Add automatic update intervals of 15 minutes, 1, 3, 6, 12 or 24 hours.
+- Add Stable and Beta update channels. Stable remains the default. Beta accepts
+  published beta releases and later stable releases with the same checksum,
+  package validation and confirmation flow.
+- Correct Night passing shadow and Night passing shadows so dim-white clouds at
+  RGB 35 move over a continuous night-blue background, instead of moving a
+  night-blue opening through a white cloud field.
+- Keep Steam Families registration alive through late service availability and
+  resume, and preserve legacy Signals only routing during migration.
+- Fix Steam screensaver detection on read-only service builds and let its Screen
+  Sync context replace every permanent Home display without covering temporary
+  alerts or Steam system animations.
+
 ## 1.2.0-beta1 - 2026-09-29
 
 - Merge the experimental Screen Sync engine into GabeCubeAura while
@@ -60,7 +191,7 @@
 
 ## Decky Store submission preparation - 2026-09-27
 
-- Set the public package and plugin author to Albus Querque and add the canonical repository, issue tracker and homepage metadata.
+- Set the public package and plugin author to Alyenax and add the canonical repository, issue tracker and homepage metadata.
 - Add a Store description and a public GabeCubeAura product image to the Decky publish metadata.
 - Retain the original Steam Deck Homebrew template copyright notice beside the GabeCubeAura copyright.
 - Adopt a pnpm 9 lockfile and package-manager pin for reproducible Store review builds.

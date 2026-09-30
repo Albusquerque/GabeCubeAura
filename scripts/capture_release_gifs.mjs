@@ -179,10 +179,40 @@ async function captureLaunchPatterns() {
   await page.close();
 }
 
+async function captureControllers() {
+  const page = await openLab();
+  const folder = path.join(scratch, "controllers-four-player");
+  const stage = page.locator(".stage-shell");
+  await page.locator('[data-tab="controllers"]').click();
+  await page.locator("#controllerCount").selectOption("4");
+  let frame = 0;
+
+  await page.locator("#controllerScene").selectOption("duo");
+  await page.locator("#controllerVariant").selectOption("double-welcome");
+  await page.locator("#controllerPlay").click();
+  frame += await captureFor(stage, 3900, folder, frame);
+
+  await page.locator('[data-controller-colour-mode="players"]').click();
+  await page.locator("#controllerScene").selectOption("gauge");
+  await page.locator("#controllerVariant").selectOption("clean");
+  await page.locator("#controllerPlay").click();
+  frame += await captureFor(stage, 2300, folder, frame);
+
+  await page.locator("#controllerTarget").selectOption("3");
+  await page.locator("#controllerScene").selectOption("charging");
+  await page.locator("#controllerVariant").selectOption("spark");
+  await page.locator("#controllerPlay").click();
+  await captureFor(stage, 2800, folder, frame);
+
+  encode("controllers-four-player", folder, 88);
+  await page.close();
+}
+
 try {
   if (!requestedCaptures.size || requestedCaptures.has("customization-plus")) await captureCustomization();
   if (!requestedCaptures.size || requestedCaptures.has("game-launch-palettes")) await captureLaunchPalettes();
   if (!requestedCaptures.size || requestedCaptures.has("game-launch-patterns")) await captureLaunchPatterns();
+  if (!requestedCaptures.size || requestedCaptures.has("controllers-four-player")) await captureControllers();
 } finally {
   await browser.close();
   await fs.rm(scratch, { recursive: true, force: true });

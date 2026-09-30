@@ -24,10 +24,12 @@ from zipfile import BadZipFile, ZipFile
 OWNER = "Alyenax"
 REPOSITORY = "GabeCubeAura"
 API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/releases/latest"
+RELEASES_API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/releases?per_page=50"
 TEST_RELEASE_API_URL = f"https://api.github.com/repos/{OWNER}/{REPOSITORY}/releases/tags/v1.1.0"
 EXPECTED_ROOT = "GabeCubeAura"
-CHECK_INTERVAL_SECONDS = 24 * 60 * 60
-STARTUP_DELAY_SECONDS = 120
+CHECK_INTERVAL_MINUTES = {15, 60, 180, 360, 720, 1440}
+STARTUP_DELAY_SECONDS = 20
+HEALTHY_TRANSACTION_RECOVERY_SECONDS = 5
 MAX_METADATA_BYTES = 512 * 1024
 MAX_CHECKSUM_BYTES = 64 * 1024
 MAX_ARCHIVE_BYTES = 5 * 1024 * 1024
@@ -53,12 +55,23 @@ SYSTEM_CA_BUNDLES = (
     "/etc/ssl/certs/ca-certificates.crt",
     "/etc/ssl/certs/ca-bundle.crt",
 )
+
+
+def _clean_system_command_environment():
+    """Keep Decky's bundled libraries away from SteamOS system commands."""
+    environment = os.environ.copy()
+    for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONHOME", "PYTHONPATH"):
+        environment.pop(name, None)
+    environment["LD_LIBRARY_PATH"] = ""
+    return environment
+
+
 STABLE_VERSION = re.compile(r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 TEST_VERSION = re.compile(
     r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$"
 )
 BETA_VERSION = re.compile(
-    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta(0|[1-9]\d*)$"
+    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.?(0|[1-9]\d*)$"
 )
 HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
@@ -89,7 +102,7 @@ def _version_tuple(value: str, *, allow_test=False):
 
 
 def _version_order(value: str, *, allow_test=False):
-    """Return a comparable key where a stable release follows its prereleases."""
+    """Return one comparable key where a stable release follows its prereleases."""
     parsed = _version_tuple(value, allow_test=allow_test)
     return (*parsed, 0, 0) if len(parsed) == 3 else parsed
 
@@ -195,24 +208,43 @@ class GitHubReleaseClient:
             payload = _bounded_read(response, MAX_METADATA_BYTES)
             response_etag = str(response.headers.get("ETag", ""))[:256]
         try:
-            release = json.loads(payload)
+            decoded = json.loads(payload)
         except (ValueError, TypeError) as error:
             raise UpdateError("metadata", "GitHub returned invalid release metadata") from error
+        if isinstance(decoded, list):
+            releases = []
+            for candidate in decoded:
+                if not isinstance(candidate, dict) or candidate.get("draft"):
+                    continue
+                candidate_version = str(candidate.get("tag_name", "")).removeprefix("v")
+                stable = bool(STABLE_VERSION.fullmatch(candidate_version))
+                beta = bool(BETA_VERSION.fullmatch(candidate_version))
+                if stable and not candidate.get("prerelease"):
+                    releases.append(candidate)
+                elif self.allow_prerelease and beta and candidate.get("prerelease"):
+                    releases.append(candidate)
+            if not releases:
+                raise UpdateError("metadata", "GitHub did not return a published release for this channel")
+            release = max(
+                releases,
+                key=lambda item: _version_order(
+                    str(item.get("tag_name", "")).removeprefix("v"), allow_test=True,
+                ),
+            )
+        else:
+            release = decoded
         if (not isinstance(release, dict) or release.get("draft")
                 or release.get("prerelease") and not self.allow_prerelease):
-            raise UpdateError("metadata", "GitHub did not return a published stable release")
+            raise UpdateError("metadata", "GitHub did not return a published release for this channel")
         version = str(release.get("tag_name", "")).removeprefix("v")
-        _version_tuple(version)
+        _version_tuple(version, allow_test=self.allow_prerelease)
+        if STABLE_VERSION.fullmatch(version) and release.get("prerelease"):
+            raise UpdateError("metadata", "A stable tag cannot be published as a prerelease")
+        if BETA_VERSION.fullmatch(version) and not release.get("prerelease"):
+            raise UpdateError("metadata", "A beta tag must be published as a prerelease")
         html_url = str(release.get("html_url", ""))
         if not html_url.startswith(f"https://github.com/{OWNER}/{REPOSITORY}/releases/tag/"):
             raise UpdateError("metadata", "The release page does not belong to the official repository")
-        installed = _version_order(installed_version, allow_test=True)
-        if _version_order(version) <= installed:
-            return {
-                "not_modified": False,
-                "version": version,
-                "etag": response_etag,
-            }
         expected_archive = f"GabeCubeAura-v{version}.zip"
         assets = release.get("assets")
         if not isinstance(assets, list):
@@ -319,7 +351,7 @@ class GitHubReleaseClient:
 
 def validate_and_stage_archive(archive_path: Path, staging_parent: Path, expected_version: str):
     """Validate and extract one Decky archive without trusting ZIP paths."""
-    _version_tuple(expected_version)
+    _version_tuple(expected_version, allow_test=True)
     if archive_path.stat().st_size > MAX_ARCHIVE_BYTES:
         raise UpdateError("archive_size", "The archive is larger than the allowed limit")
     if staging_parent.exists():
@@ -395,10 +427,7 @@ class UpdateManager:
         self.runtime_dir = Path(runtime_dir).resolve()
         self.plugin_dir = Path(plugin_dir).resolve()
         self.logger = logger
-        self.client = client or GitHubReleaseClient(
-            api_url=TEST_RELEASE_API_URL if "-test." in installed_version else API_URL,
-            allow_prerelease="-test." in installed_version,
-        )
+        self.client = client
         self.clock = clock
         self.monotonic = monotonic
         self.root = self.runtime_dir / "updates"
@@ -423,6 +452,8 @@ class UpdateManager:
         state.setdefault("next_check_at", 0)
         state.setdefault("notified_version", "")
         state.setdefault("etag", "")
+        state.setdefault("checked_channel", "")
+        state.setdefault("return_to_stable", False)
         state.setdefault("error_category", "")
         state.setdefault("error", "")
         state.setdefault("release_notes", "")
@@ -437,9 +468,17 @@ class UpdateManager:
         state["installed_version"] = self.installed_version
         available = str(state.get("available_version", ""))
         try:
+            returning = (
+                bool(state.get("return_to_stable"))
+                and self._configured_channel() == "stable"
+                and bool(BETA_VERSION.fullmatch(self.installed_version))
+                and bool(STABLE_VERSION.fullmatch(available))
+                and available != self.installed_version
+            )
             stale_available = (
                 bool(available)
-                and _version_order(available)
+                and not returning
+                and _version_order(available, allow_test=True)
                 <= _version_order(self.installed_version, allow_test=True)
             )
         except UpdateError:
@@ -451,6 +490,7 @@ class UpdateManager:
                 "release_url": "",
                 "prepared_digest": "",
                 "confirmation_token": "",
+                "return_to_stable": False,
             })
             if state.get("phase") == "available":
                 state["phase"] = "up_to_date"
@@ -517,6 +557,80 @@ class UpdateManager:
             "acknowledged_at": int(self.clock()),
         })
 
+    def _refresh_helper_state(self):
+        """Adopt terminal state written by the independent update helper."""
+        if self._state.get("phase") not in {"installing", "swap_started", "swapped", "restart_pending"}:
+            return
+        token = str(self._state.get("pending_token", ""))
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            return
+        persisted = _safe_read_json(self.state_path, {})
+        phase = str(persisted.get("phase", ""))
+        same_transaction = (
+            persisted.get("completed_token") == token
+            or persisted.get("pending_token") == token
+        )
+        if same_transaction and phase in {"updated", "rolled_back", "error"}:
+            self._state = self._load_state()
+
+    def _recover_healthy_pending_transaction(self):
+        """Finish a stale restart once the replacement backend is healthy."""
+        if self._state.get("phase") != "restart_pending":
+            return
+        token = str(self._state.get("pending_token", ""))
+        expected = str(self._state.get("pending_version", ""))
+        if (not re.fullmatch(r"[0-9a-f]{32}", token)
+                or expected != self.installed_version):
+            return
+        health = _safe_read_json(self.root / "health" / f"{token}.json", {})
+        acknowledged_at = int(health.get("acknowledged_at", 0) or 0)
+        if (health.get("token") != token or health.get("version") != expected
+                or self.clock() - acknowledged_at < HEALTHY_TRANSACTION_RECOVERY_SECONDS):
+            return
+        transaction = _safe_read_json(self.root / "transactions" / f"{token}.json", {})
+        rollback_version = str(transaction.get("from_version", ""))
+        self._set(
+            phase="updated", installed_version=self.installed_version,
+            pending_token="", pending_version="", confirmation_token="",
+            available_version="", release_notes="", release_url="",
+            prepared_digest="", rollback_version=rollback_version,
+            last_result="updated", completed_token=token,
+            error="", error_category="",
+        )
+        self.logger.warning(
+            "[GabeCubeAura] recovered a healthy update transaction left at restart_pending"
+        )
+
+    def _recover_superseded_pending_transaction(self):
+        """Unlock a stale restart replaced by a different manual installation."""
+        if self._state.get("phase") != "restart_pending":
+            return
+        token = str(self._state.get("pending_token", ""))
+        expected = str(self._state.get("pending_version", ""))
+        if (not re.fullmatch(r"[0-9a-f]{32}", token)
+                or not expected or expected == self.installed_version):
+            return
+        transaction = _safe_read_json(self.root / "transactions" / f"{token}.json", {})
+        previous = str(transaction.get("from_version", ""))
+        result = "rolled_back" if previous == self.installed_version else "updated"
+        self._set(
+            phase=result, installed_version=self.installed_version,
+            pending_token="", pending_version="", confirmation_token="",
+            available_version="", release_notes="", release_url="",
+            prepared_digest="", rollback_version=previous,
+            last_result=result, completed_token=token,
+            error="", error_category="",
+        )
+        self.logger.warning(
+            "[GabeCubeAura] closed a restart_pending transaction superseded by the installed version"
+        )
+
+    def _reconcile_helper_state(self):
+        with self._lock:
+            self._refresh_helper_state()
+            self._recover_superseded_pending_transaction()
+            self._recover_healthy_pending_transaction()
+
     def start(self):
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -536,6 +650,7 @@ class UpdateManager:
         initial = STARTUP_DELAY_SECONDS + random.uniform(0, 30)
         if self._stop.wait(initial):
             return
+        self._check_on_startup()
         while not self._stop.is_set():
             values = self.settings.all()
             now = self.clock()
@@ -548,7 +663,51 @@ class UpdateManager:
             self._wake.wait(60)
             self._wake.clear()
 
+    def _check_on_startup(self):
+        if not self.settings.all().get("updates_auto_check", True):
+            return self.status()
+        try:
+            return self.check()
+        except Exception as error:
+            self.logger.warning(f"[GabeCubeAura] startup update check failed: {error}")
+            return self.status()
+
+    def _configured_channel(self):
+        channel = self.settings.all().get("updates_channel", "stable")
+        return channel if channel in {"stable", "beta"} else "stable"
+
+    def _release_client(self, channel=None):
+        if self.client is not None:
+            return self.client
+        if "-test." in self.installed_version:
+            return GitHubReleaseClient(api_url=TEST_RELEASE_API_URL, allow_prerelease=True)
+        channel = channel or self._configured_channel()
+        return GitHubReleaseClient(
+            api_url=RELEASES_API_URL if channel == "beta" else API_URL,
+            allow_prerelease=channel == "beta",
+        )
+
+    def _check_interval_seconds(self):
+        raw = self.settings.all().get("updates_check_interval_minutes", 1440)
+        try:
+            minutes = int(raw)
+        except (TypeError, ValueError, OverflowError):
+            minutes = 1440
+        if minutes not in CHECK_INTERVAL_MINUTES:
+            minutes = 1440
+        return minutes * 60
+
+    def _availability(self, version: str, channel: str):
+        installed = _version_order(self.installed_version, allow_test=True)
+        candidate = _version_order(version, allow_test=True)
+        installed_beta = bool(BETA_VERSION.fullmatch(self.installed_version))
+        candidate_stable = bool(STABLE_VERSION.fullmatch(version))
+        if channel == "stable" and installed_beta and candidate_stable:
+            return version != self.installed_version, candidate < installed
+        return candidate > installed, False
+
     def status(self):
+        self._reconcile_helper_state()
         with self._lock:
             values = self.settings.all()
             result = dict(self._state)
@@ -556,6 +715,8 @@ class UpdateManager:
                 "installed_version": self.installed_version,
                 "auto_check": bool(values.get("updates_auto_check", True)),
                 "notifications": bool(values.get("updates_notifications", True)),
+                "check_interval_minutes": int(values.get("updates_check_interval_minutes", 1440)),
+                "channel": values.get("updates_channel", "stable"),
                 "test_build": "-test." in self.installed_version,
             })
             result.pop("etag", None)
@@ -563,41 +724,46 @@ class UpdateManager:
             result.pop("completed_token", None)
             return result
 
-    def check(self):
+    def check(self, force_refresh=False):
+        self._reconcile_helper_state()
         if self._state.get("phase") in {"downloading", "verifying", "ready", "installing", "restart_pending"}:
             return self.status()
         if not self._operation_lock.acquire(blocking=False):
             return self.status()
-        self._set(phase="checking", error_category="", error="")
+        self._set(phase="checking", error_category="", error="", return_to_stable=False)
         try:
-            release = self.client.latest(self.installed_version, etag=self._state.get("etag", ""))
+            channel = self._configured_channel()
+            client = self._release_client(channel)
+            etag = (
+                self._state.get("etag", "")
+                if not force_refresh and self._state.get("checked_channel") == channel
+                else ""
+            )
+            release = client.latest(self.installed_version, etag=etag)
             now = int(self.clock())
             if release.get("not_modified"):
                 available = str(self._state.get("available_version", ""))
                 try:
-                    newer = (
-                        bool(available)
-                        and _version_order(available)
-                        > _version_order(self.installed_version, allow_test=True)
-                    )
+                    newer, returning = self._availability(available, channel) if available else (False, False)
                 except UpdateError:
-                    newer = False
+                    newer, returning = False, False
                 phase = "available" if newer else "up_to_date"
                 self._set(phase=phase, last_checked_at=now,
-                          next_check_at=now + CHECK_INTERVAL_SECONDS)
+                          next_check_at=now + self._check_interval_seconds(),
+                          checked_channel=channel, return_to_stable=returning)
                 return self.status()
             self._release = release
-            installed = _version_order(self.installed_version, allow_test=True)
-            available = _version_order(release["version"])
-            newer = available > installed
+            newer, returning = self._availability(release["version"], channel)
             self._set(
                 phase="available" if newer else "up_to_date",
                 available_version=release["version"] if newer else "",
-                release_notes=release["notes"] if newer else "",
-                release_url=release["html_url"] if newer else "",
+                release_notes=release.get("notes", "") if newer else "",
+                release_url=release.get("html_url", "") if newer else "",
                 last_checked_at=now,
-                next_check_at=now + CHECK_INTERVAL_SECONDS,
+                next_check_at=now + self._check_interval_seconds(),
                 etag=release.get("etag", ""),
+                checked_channel=channel,
+                return_to_stable=returning if newer else False,
                 error_category="",
                 error="",
             )
@@ -610,11 +776,32 @@ class UpdateManager:
             self._operation_lock.release()
         return self.status()
 
-    def set_preferences(self, auto_check: bool, notifications: bool):
-        self.settings.update({
+    def set_preferences(self, auto_check: bool, notifications: bool,
+                        check_interval_minutes=None, channel=None):
+        current = self.settings.all()
+        interval = (current.get("updates_check_interval_minutes", 1440)
+                    if check_interval_minutes is None else check_interval_minutes)
+        selected_channel = current.get("updates_channel", "stable") if channel is None else channel
+        values = self.settings.update({
             "updates_auto_check": bool(auto_check),
             "updates_notifications": bool(notifications),
+            "updates_check_interval_minutes": interval,
+            "updates_channel": selected_channel,
         })
+        channel_changed = values["updates_channel"] != current.get("updates_channel", "stable")
+        now = int(self.clock())
+        if channel_changed:
+            self._release = None
+            self._set(
+                phase="idle", available_version="", release_notes="", release_url="",
+                etag="", checked_channel="", next_check_at=0, return_to_stable=False,
+                confirmation_token="", prepared_digest="",
+            )
+            return self.check()
+        if auto_check:
+            next_due = now + values["updates_check_interval_minutes"] * 60
+            current_due = int(self._state.get("next_check_at", 0) or 0)
+            self._set(next_check_at=min(current_due, next_due) if current_due > now else now)
         if auto_check:
             self._wake.set()
         return self.status()
@@ -642,10 +829,12 @@ class UpdateManager:
     def _prepare_locked(self):
         version = str(self._state.get("available_version", ""))
         if not version:
-            raise UpdateError("state", "No newer stable version is available")
+            raise UpdateError("state", "No newer version is available on the selected channel")
+        channel = self._state.get("checked_channel") or self._configured_channel()
+        client = self._release_client(channel)
         release = self._release
         if not release or release.get("version") != version:
-            release = self.client.latest(self.installed_version, etag="")
+            release = client.latest(self.installed_version, etag="")
             if release.get("not_modified") or release.get("version") != version:
                 raise UpdateError("state", "Refresh the release before downloading it")
             self._release = release
@@ -654,8 +843,8 @@ class UpdateManager:
         stage_parent = self.root / "staged" / token
         self._set(phase="downloading", confirmation_token="", prepared_digest="")
         try:
-            expected_digest = self.client.read_checksum(release, self.installed_version)
-            calculated = self.client.download_archive(release, download, self.installed_version)
+            expected_digest = client.read_checksum(release, self.installed_version)
+            calculated = client.download_archive(release, download, self.installed_version)
             if calculated != expected_digest:
                 raise UpdateError("checksum", "The downloaded archive failed its SHA256 check")
             self._set(phase="verifying")
@@ -711,8 +900,15 @@ class UpdateManager:
             interpreter, str(helper_target), str(transaction_path),
         ]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
+            subprocess.run(
+                command, check=True, capture_output=True, text=True, timeout=10,
+                env=_clean_system_command_environment(),
+            )
         except (OSError, subprocess.SubprocessError) as error:
+            stdout = str(getattr(error, "stdout", "") or "").strip().replace("\n", " ")
+            stderr = str(getattr(error, "stderr", "") or "").strip().replace("\n", " ")
+            detail = stderr or stdout or type(error).__name__
+            self.logger.warning(f"Independent update helper launch failed: {detail[:500]}")
             self._set(phase="error", pending_token="", pending_version="",
                       error_category="helper_launch", error="Could not start the independent update helper")
             raise UpdateError("helper_launch", "Could not start the independent update helper") from error
@@ -746,7 +942,7 @@ class UpdateManager:
                     json.dumps({"name": "gabecubeaura", "version": "1.1.0"}), encoding="utf-8",
                 )
                 (fixture / "plugin.json").write_text(
-                    json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
+                    json.dumps({"name": "GabeCubeAura", "author": "Alyenax"}), encoding="utf-8",
                 )
                 from zipfile import ZIP_DEFLATED, ZipFile
                 with ZipFile(archive, "w", ZIP_DEFLATED) as package:
@@ -806,7 +1002,7 @@ class UpdateManager:
                         json.dumps({"name": "gabecubeaura", "version": version}), encoding="utf-8",
                     )
                     (directory / "plugin.json").write_text(
-                        json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
+                        json.dumps({"name": "GabeCubeAura", "author": "Alyenax"}), encoding="utf-8",
                     )
                 lab_state = lab / "transaction-state.json"
                 _atomic_json(lab_state, {})

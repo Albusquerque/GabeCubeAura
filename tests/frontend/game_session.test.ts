@@ -1,19 +1,58 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { GameSessionLatch } from "../../src/game_session";
+import { GameSessionLatch, selectObservedGame } from "../../src/game_session";
 
-test("confirmed lifetime game survives Router zero during menus and idle", () => {
-  const latch = new GameSessionLatch(3);
+test("the live running-app collection rejects a stale MainRunningApp after exit", () => {
+  assert.deepEqual(
+    selectObservedGame({ appid: 42, display_name: "Closed game" }, []),
+    { appid: 0, title: "" },
+  );
+});
+
+test("the live running-app collection confirms or replaces MainRunningApp", () => {
+  assert.deepEqual(
+    selectObservedGame(
+      { appid: 42, display_name: "Main game" },
+      [{ appid: 42, display_name: "Running game" }],
+    ),
+    { appid: 42, title: "Main game" },
+  );
+  assert.deepEqual(
+    selectObservedGame(
+      { appid: 42, display_name: "Stale game" },
+      [{ appid: 73, display_name: "Actual game" }],
+    ),
+    { appid: 73, title: "Actual game" },
+  );
+});
+
+test("MainRunningApp remains the fallback when RunningApps is unavailable", () => {
+  assert.deepEqual(
+    selectObservedGame({ appid: 42, display_name: "Game" }, undefined),
+    { appid: 42, title: "Game" },
+  );
+});
+
+test("confirmed lifetime game survives transient Router zero then recovers a missed stop", () => {
+  const latch = new GameSessionLatch(3, 3);
   latch.seed({ appid: 0, title: "" });
   const started = latch.observeLifetime(42, true, "Game");
   assert.equal(started.action, "update");
   assert.equal(started.action === "update" && started.launch, true);
-  for (let index = 0; index < 20; index += 1) {
-    const decision = latch.observePoll({ appid: 0, title: "" });
-    assert.equal(decision.action, "retain");
-    assert.equal(latch.snapshot().appid, 42);
-  }
+  assert.equal(latch.observePoll({ appid: 0, title: "" }).action, "retain");
+  assert.equal(latch.observePoll({ appid: 0, title: "" }).action, "retain");
+  const stopped = latch.observePoll({ appid: 0, title: "" });
+  assert.deepEqual(stopped, {
+    action: "update", appid: 0, title: "",
+    source: "poll confirmed missing lifetime stop", launch: false,
+  });
+});
+
+test("a real lifetime stop still ends the game immediately", () => {
+  const latch = new GameSessionLatch(3, 3);
+  latch.seed({ appid: 0, title: "" });
+  latch.observeLifetime(42, true, "Game");
   const stopped = latch.observeLifetime(42, false);
   assert.deepEqual(stopped, {
     action: "update", appid: 0, title: "", source: "Steam lifetime stop", launch: false,

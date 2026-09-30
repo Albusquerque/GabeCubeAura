@@ -5,6 +5,33 @@ export interface ObservedGame {
   title: string;
 }
 
+function cleanSteamApp(app: any): ObservedGame {
+  const appid = normalizeAppId(app?.appid ?? app?.appID ?? app?.unAppID ?? app?.app_id);
+  return {
+    appid,
+    title: appid > 0 ? String(app?.display_name ?? app?.name ?? "") : "",
+  };
+}
+
+/**
+ * Router.MainRunningApp can retain the last game after it exits. When Steam
+ * exposes Router.RunningApps, that live collection is the authority and the
+ * main entry is only accepted if it is still present there. The session latch
+ * absorbs short collection gaps before declaring the game stopped.
+ */
+export function selectObservedGame(main: any, running: unknown): ObservedGame {
+  const mainGame = cleanSteamApp(main);
+  if (!Array.isArray(running)) return mainGame;
+  const games = running.map(cleanSteamApp).filter((game) => game.appid > 0);
+  if (mainGame.appid > 0) {
+    const confirmedMain = games.find((game) => game.appid === mainGame.appid);
+    if (confirmedMain) {
+      return { appid: mainGame.appid, title: mainGame.title || confirmedMain.title };
+    }
+  }
+  return games[0] ?? { appid: 0, title: "" };
+}
+
 export type GameSessionDecision =
   | { action: "none" }
   | { action: "retain"; appid: number; title: string; source: string }
@@ -12,8 +39,8 @@ export type GameSessionDecision =
 
 /**
  * Keeps an authoritative Steam lifetime session across transient Router gaps.
- * Router polling may discover a game, but cannot end a confirmed lifetime
- * session on its own.
+ * Router polling may discover a game and, after a bounded empty grace period,
+ * can also recover from a missing Steam lifetime stop callback.
  */
 export class GameSessionLatch {
   private current: ObservedGame = { appid: 0, title: "" };
@@ -22,7 +49,10 @@ export class GameSessionLatch {
   private ignoredAfterResume = 0;
   private ignoredPolls = 0;
 
-  constructor(private readonly fallbackZeroPolls = 15) {}
+  constructor(
+    private readonly fallbackZeroPolls = 15,
+    private readonly lifetimeZeroPolls = 5,
+  ) {}
 
   snapshot(): ObservedGame {
     return { ...this.current };
@@ -83,19 +113,25 @@ export class GameSessionLatch {
       };
     }
     if (this.current.appid <= 0) return { action: "none" };
-    if (this.lifetimeAvailable) {
-      return { action: "retain", ...this.current, source: "poll zero retained" };
-    }
     this.zeroPolls += 1;
-    if (this.zeroPolls < Math.max(2, this.fallbackZeroPolls)) {
-      return { action: "retain", ...this.current, source: "fallback zero grace" };
+    const zeroLimit = this.lifetimeAvailable
+      ? this.lifetimeZeroPolls
+      : this.fallbackZeroPolls;
+    if (this.zeroPolls < Math.max(2, zeroLimit)) {
+      return {
+        action: "retain",
+        ...this.current,
+        source: this.lifetimeAvailable ? "lifetime stop grace" : "fallback zero grace",
+      };
     }
     this.current = { appid: 0, title: "" };
     this.zeroPolls = 0;
     return {
       action: "update",
       ...this.current,
-      source: "poll fallback confirmed stop",
+      source: this.lifetimeAvailable
+        ? "poll confirmed missing lifetime stop"
+        : "poll fallback confirmed stop",
       launch: false,
     };
   }

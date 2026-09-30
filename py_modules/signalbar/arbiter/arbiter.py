@@ -23,7 +23,7 @@ class Arbiter:
                recording_marker_isolation=False, performance_always=False,
                controller_event=None, controller_base=None, weather_base=None,
                customization_base=None, screen_sync_base=None, screen_sync_fallback=None,
-               launch_artwork=None, steam_priority=False):
+               launch_artwork=None, steam_priority=False, witcher=None):
         if mode == "disabled":
             return ProviderOutput("none", None, "GabeCubeAura disabled")
         if steam_priority:
@@ -48,10 +48,35 @@ class Arbiter:
         if signal is not None and signal.frame is not None:
             return signal
 
+        # This is an explicit, game-scoped experimental base. It remains below
+        # Steam, alerts, launch animations and playtime countdowns.
+        if witcher is not None and witcher.frame is not None:
+            return witcher
+
         if weather_base is not None and weather_base.provider == "weather:preview" and weather_base.frame is not None:
             return self._with_recording_marker(weather_base, recording_marker, recording_marker_isolation)
         if customization_base is not None and customization_base.provider == "customization:preview" and customization_base.frame is not None:
             return self._with_recording_marker(customization_base, recording_marker, recording_marker_isolation)
+
+        # Screen Sync requested by Steam's screensaver temporarily replaces the
+        # selected permanent Home display. Brief events and explicit previews
+        # above still retain their normal priority.
+        if mode == "screen_sync":
+            if screen_sync_base is not None and screen_sync_base.frame:
+                base = screen_sync_base
+            elif screen_sync_fallback is not None and screen_sync_fallback.frame:
+                base = ProviderOutput(
+                    screen_sync_fallback.provider,
+                    screen_sync_fallback.frame,
+                    "Screen Sync capture fallback",
+                )
+            else:
+                base = ProviderOutput("none", None, "Screen Sync unavailable")
+            return self._with_recording_marker(
+                base,
+                recording_marker and base.provider.startswith(("screen-sync", "customization")),
+                recording_marker_isolation,
+            )
 
         if controller_base is not None and controller_base.frame is not None:
             return self._with_recording_marker(controller_base, recording_marker, recording_marker_isolation)
@@ -68,17 +93,6 @@ class Arbiter:
         elif mode == "customization":
             base = customization_base if customization_base is not None and customization_base.frame \
                 else ProviderOutput("none", None, "Customization+ unavailable")
-        elif mode == "screen_sync":
-            if screen_sync_base is not None and screen_sync_base.frame:
-                base = screen_sync_base
-            elif screen_sync_fallback is not None and screen_sync_fallback.frame:
-                base = ProviderOutput(
-                    screen_sync_fallback.provider,
-                    screen_sync_fallback.frame,
-                    "Screen Sync capture fallback",
-                )
-            else:
-                base = ProviderOutput("none", None, "Screen Sync unavailable")
         elif game.running and performance.frame:
             base = performance
         elif game.running and artwork.frame:

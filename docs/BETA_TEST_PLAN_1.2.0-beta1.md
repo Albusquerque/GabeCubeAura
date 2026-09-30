@@ -54,6 +54,24 @@ alert and playtime countdown over Screen Sync. Confirm that each temporary
 layer restores the expected display. If StripMine is installed, test every
 ownership choice and confirm both plugins acknowledge handoffs.
 
+## Steam Families campaign
+
+1. On the restricted account, select GabeCubeAura Off for Home and in-game,
+   leave the current game on Use in-game default, and disable Game launches.
+2. Confirm Steam's account colour is visible before starting a game.
+3. Launch a game with a playtime allowance and confirm Advanced settings moves
+   from Steam Families callback waiting to received.
+4. Open and close the Steam overlay and Quick Access Menu several times. The
+   countdown must keep its progress and must not restart at a full bar.
+5. Suspend and resume during the same allowance. Confirm the callback is
+   received again without restarting Decky or moving a controller.
+6. Change between the unrestricted and restricted Steam accounts, then repeat
+   the launch. Confirm the restricted account still starts the countdown and
+   Steam's own account colour returns when no countdown is active.
+7. Repeat once with a fixed full-bar scale and once with Timer duration. A real
+   game exit and relaunch may start full with Timer duration; a temporary menu
+   visit must never do so.
+
 ## Pass criteria
 
 - no crash, repeated Decky restart or frozen capture process;

@@ -20,8 +20,8 @@ export const CONTROLLER_VARIANTS = {
     { data: "spark", label: "Spark lattice", detail: "Small highlights move through the reported charge level." },
   ],
   duo: [
-    { data: "twin", label: "Twin reveal", detail: "Both mirrored gauges grow inward; white tips appear after the intro." },
-    { data: "focus", label: "Two signatures", detail: "A white point travels each gauge in turn; fixed white tips appear after the intro." },
-    { data: "double-welcome", label: "Mirror greeting", detail: "Two white points greet the dark centre and withdraw; fixed white tips finish." },
+    { data: "twin", label: "Twin reveal", detail: "Every active seat grows into view; white tips appear after the intro." },
+    { data: "focus", label: "Two signatures", detail: "A white point introduces each active seat in turn; fixed white tips appear after the intro." },
+    { data: "double-welcome", label: "Mirror greeting", detail: "White points greet every active seat and withdraw; fixed white tips finish." },
   ],
 } as const;

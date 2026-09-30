@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from signalbar.arbiter import Arbiter
 from signalbar.arbiter.guard import ManualClock
@@ -113,6 +115,60 @@ class ScreenSyncProcessorTests(unittest.TestCase):
 
 
 class ScreenCaptureDiscoveryTests(unittest.TestCase):
+    def test_logically_active_capture_restarts_after_old_supervisor_exits(self):
+        class FakeThread:
+            instances = []
+
+            def __init__(self, **_kwargs):
+                self.alive = False
+                self.started = False
+                self.__class__.instances.append(self)
+
+            def is_alive(self):
+                return self.alive
+
+            def start(self):
+                self.started = True
+                self.alive = True
+
+        service = ScreenCaptureService()
+        with patch("signalbar.providers.screen_sync.threading.Thread", FakeThread):
+            service.set_active(True)
+            self.assertEqual(len(FakeThread.instances), 1)
+            self.assertTrue(FakeThread.instances[0].started)
+
+            # Simulate the old capture supervisor completing after a forced
+            # game-transition stop. The logical request remains active.
+            FakeThread.instances[0].alive = False
+            service.set_active(True)
+
+        self.assertEqual(len(FakeThread.instances), 2)
+        self.assertTrue(FakeThread.instances[1].started)
+
+    def test_root_backend_runs_pipewire_clients_as_runtime_owner(self):
+        with patch("signalbar.providers.screen_sync.os.geteuid", return_value=0), \
+                patch("signalbar.providers.screen_sync.pwd.getpwuid",
+                      return_value=SimpleNamespace(pw_name="deck")), \
+                patch("signalbar.providers.screen_sync.shutil.which",
+                      return_value="/usr/bin/runuser"):
+            command, identity = ScreenCaptureService._command_for_runtime(
+                ["/usr/bin/pw-dump"], "/run/user/1000",
+            )
+        self.assertEqual(command, [
+            "/usr/bin/runuser", "-u", "deck", "--", "/usr/bin/pw-dump",
+        ])
+        self.assertEqual(identity, "deck (uid 1000)")
+
+    def test_non_root_backend_keeps_direct_pipewire_command(self):
+        with patch("signalbar.providers.screen_sync.os.geteuid", return_value=1000), \
+                patch("signalbar.providers.screen_sync.pwd.getpwuid",
+                      return_value=SimpleNamespace(pw_name="deck")):
+            command, identity = ScreenCaptureService._command_for_runtime(
+                ["/usr/bin/pw-dump"], "/run/user/1000",
+            )
+        self.assertEqual(command, ["/usr/bin/pw-dump"])
+        self.assertEqual(identity, "deck (uid 1000)")
+
     def test_gamescope_video_source_wins_over_camera(self):
         dump = [
             {"id": 3, "type": "PipeWire:Interface:Node", "info": {"props": {
@@ -122,6 +178,79 @@ class ScreenCaptureDiscoveryTests(unittest.TestCase):
                 "node.description": "Gamescope Video"}}},
         ]
         self.assertEqual(ScreenCaptureService.find_gamescope_node(dump), (9, "gamescope Gamescope Video"))
+
+    def test_exact_gamescope_node_does_not_require_video_metadata(self):
+        dump = [
+            {"id": 12, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "node.name": "gamescope"}}},
+        ]
+        self.assertEqual(ScreenCaptureService.find_gamescope_node(dump), (12, "gamescope"))
+
+    def test_discovery_checks_every_pipewire_session(self):
+        service = ScreenCaptureService()
+        dumps = {
+            "/run/user/0": [
+                {"id": 3, "type": "PipeWire:Interface:Node", "info": {"props": {
+                    "media.class": "Audio/Sink", "node.name": "desktop-audio"}}},
+            ],
+            "/run/user/1000": [
+                {"id": 9, "type": "PipeWire:Interface:Node", "info": {"props": {
+                    "node.name": "gamescope"}}},
+            ],
+        }
+        with patch.object(service, "_runtime_dirs", return_value=list(dumps)), \
+                patch.object(service, "_pipewire_dump", side_effect=lambda runtime: dumps[runtime]):
+            runtime, node, dump = service._discover_gamescope_node()
+        self.assertEqual(runtime, "/run/user/1000")
+        self.assertEqual(node, (9, "gamescope"))
+        self.assertIs(dump, dumps["/run/user/1000"])
+        self.assertEqual(service.status()["runtime_dir"], "/run/user/1000")
+
+    def test_accessible_pipewire_session_can_try_gamescope_name_without_enumerated_node(self):
+        service = ScreenCaptureService()
+        dump = [
+            {"id": 3, "type": "PipeWire:Interface:Node", "info": {"props": {
+                "media.class": "Audio/Sink", "node.name": "desktop-audio"}}},
+        ]
+        with patch.object(service, "_runtime_dirs", return_value=["/run/user/1000"]), \
+                patch.object(service, "_pipewire_dump", return_value=dump):
+            runtime, node, discovered = service._discover_gamescope_node()
+        self.assertEqual(runtime, "/run/user/1000")
+        self.assertIsNone(node)
+        self.assertIs(discovered, dump)
+        status = service.status()
+        self.assertEqual(status["node_name"], "gamescope (direct name)")
+        self.assertIn("trying target-object=gamescope directly", status["discovery_detail"])
+
+    def test_direct_name_fallback_prefers_gaming_user_over_root_pipewire(self):
+        service = ScreenCaptureService()
+        with patch.object(service, "_runtime_dirs",
+                          return_value=["/run/user/0", "/run/user/1000"]), \
+                patch.object(service, "_pipewire_dump",
+                             side_effect=lambda runtime: [{"runtime": runtime}]), \
+                patch("signalbar.providers.screen_sync.pwd.getpwuid",
+                      side_effect=lambda uid: SimpleNamespace(
+                          pw_name="root" if uid == 0 else "deck",
+                      )):
+            runtime, node, _dump = service._discover_gamescope_node()
+        self.assertEqual(runtime, "/run/user/1000")
+        self.assertIsNone(node)
+
+    def test_capture_command_prefers_current_gamescope_name_with_legacy_fallback(self):
+        current = ScreenCaptureService._capture_command("gst-launch-1.0", 91)
+        self.assertIn("target-object=gamescope", current)
+        self.assertIn("client-name=GabeCubeAura-Screen-Sync", current)
+        self.assertIn("keepalive-time=33", current)
+        self.assertNotIn("path=91", current)
+        compatibility = ScreenCaptureService._capture_command(
+            "gst-launch-1.0", None, "target-object-compat",
+        )
+        self.assertIn("target-object=gamescope", compatibility)
+        self.assertNotIn("keepalive-time=33", compatibility)
+        legacy = ScreenCaptureService._capture_command("gst-launch-1.0", 91, "path")
+        self.assertIn("path=91", legacy)
+        self.assertNotIn("target-object=gamescope", legacy)
+        self.assertNotIn("keepalive-time=33", legacy)
 
     def test_consumer_count_only_includes_links_from_selected_node(self):
         dump = [
@@ -136,6 +265,13 @@ class ScreenCaptureDiscoveryTests(unittest.TestCase):
 
 
 class ScreenSyncProviderTests(unittest.TestCase):
+    def test_customization_fallback_is_suppressed_during_pending_launch_transition(self):
+        should_fallback = Engine._screen_sync_fallback_should_run
+        self.assertTrue(should_fallback(True, True, None, False))
+        self.assertFalse(should_fallback(True, True, None, True))
+        self.assertFalse(should_fallback(True, True, BLACK, False))
+        self.assertFalse(should_fallback(False, True, None, False))
+
     def test_engine_capture_policy_stops_for_exit_guard_critical_and_stripmine(self):
         values = {"signalbar_enabled": True, "stripmine_priority_screen_sync": "signalbar"}
         should_run = Engine._screen_sync_should_run
@@ -195,6 +331,58 @@ class ScreenSyncProviderTests(unittest.TestCase):
             performance=none, artwork=none, idle=none, screen_sync_base=output,
         )
         self.assertEqual(result.provider, "screen-sync")
+
+    def test_screensaver_screen_sync_replaces_every_permanent_home_display(self):
+        frame = lambda provider: ProviderOutput(
+            provider, normalize_frame([(10, 20, 30)] * 17), provider,
+        )
+        none = ProviderOutput("none", None, "none")
+        base = {
+            "mode": "screen_sync",
+            "guard_allows": True,
+            "game": GameState(0, ""),
+            "performance": none,
+            "artwork": none,
+            "idle": none,
+            "screen_sync_base": frame("screen-sync"),
+        }
+        permanent_displays = (
+            {"customization_base": frame("customization:steady")},
+            {"performance": frame("performance")},
+            {"weather_base": frame("weather:home")},
+            {"controller_base": frame("controller:battery")},
+        )
+        for display in permanent_displays:
+            with self.subTest(display=next(iter(display))):
+                result = Arbiter().choose(**{**base, **display})
+                self.assertEqual(result.provider, "screen-sync")
+
+    def test_screensaver_screen_sync_keeps_temporary_layers_above_it(self):
+        frame = lambda provider: ProviderOutput(
+            provider, normalize_frame([(10, 20, 30)] * 17), provider,
+        )
+        none = ProviderOutput("none", None, "none")
+        base = {
+            "mode": "screen_sync",
+            "guard_allows": True,
+            "game": GameState(0, ""),
+            "performance": none,
+            "artwork": none,
+            "idle": none,
+            "screen_sync_base": frame("screen-sync"),
+        }
+        self.assertEqual(
+            Arbiter().choose(**base, event=frame("event:notification")).provider,
+            "event:notification",
+        )
+        self.assertEqual(
+            Arbiter().choose(**base, launch_artwork=frame("launch-artwork")).provider,
+            "launch-artwork",
+        )
+        self.assertEqual(
+            Arbiter().choose(**base, weather_base=frame("weather:preview")).provider,
+            "weather:preview",
+        )
 
     def test_customization_fallback_keeps_recording_marker(self):
         none = ProviderOutput("none", None, "none")

@@ -9,7 +9,9 @@ from pathlib import Path
 from signalbar.arbiter import Arbiter
 from signalbar.backend import Engine
 from signalbar.models import GameState, ProviderOutput, normalize_frame
-from signalbar.providers.controller import ControllerProvider, DURATIONS, VARIANTS, controller_frame
+from signalbar.providers.controller import (
+    ControllerProvider, DURATIONS, VARIANTS, controller_frame, controller_zones,
+)
 from signalbar.settings import SettingsStore
 
 
@@ -196,6 +198,22 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(restored.all()["controller_charging_mode"], "continuous-home")
             self.assertEqual(restored.all()["controller_charging_display"], "home")
 
+    def test_old_player_palette_defaults_migrate_but_custom_colours_are_preserved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(json.dumps({
+                "controller_player_colour_1": [37, 200, 245],
+                "controller_player_colour_2": [12, 34, 56],
+                "controller_player_colour_3": [167, 119, 255],
+                "controller_player_colour_4": [75, 211, 138],
+            }), encoding="utf-8")
+            values = SettingsStore(str(path)).all()
+            self.assertEqual(values["controller_player_colour_1"], [36, 199, 245])
+            self.assertEqual(values["controller_player_colour_2"], [12, 34, 56])
+            self.assertEqual(values["controller_player_colour_3"], [106, 26, 255])
+            self.assertEqual(values["controller_player_colour_4"], [70, 210, 136])
+            self.assertEqual(values["controller_player_palette_revision"], 1)
+
     def test_charging_choices_are_exclusive_and_old_settings_migrate(self):
         with tempfile.TemporaryDirectory() as folder:
             path = str(Path(folder) / "settings.json")
@@ -380,6 +398,178 @@ class ControllerTests(unittest.TestCase):
                            sum(pixel != (0, 0, 0) for pixel in frame[9:]))
         provider.update([controller(None)], values)
         self.assertIsNone(provider.persistent_output(values, True).frame)
+
+    def test_fixed_seats_mirror_two_and_four_but_not_three(self):
+        self.assertEqual(controller_zones(2), (
+            tuple(range(0, 8)), tuple(range(16, 8, -1)),
+        ))
+        self.assertEqual(controller_zones(3), (
+            tuple(range(0, 5)), tuple(range(6, 11)), tuple(range(12, 17)),
+        ))
+        self.assertEqual(controller_zones(4), (
+            tuple(range(0, 4)), tuple(range(7, 3, -1)),
+            tuple(range(9, 13)), tuple(range(16, 12, -1)),
+        ))
+
+    def test_three_and_four_controller_gauges_use_fixed_player_colours_and_white_tips(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_colour_mode="players", controller_gauge_brightness=100)
+        white = (246, 249, 255)
+        three = controller_frame(
+            "duo", "twin", 4, values=values, intro_age=4,
+            percents=[100, 80, 60],
+        )
+        self.assertEqual(three[4], white)
+        self.assertEqual(three[9], white)
+        self.assertEqual(three[14], white)
+        self.assertEqual(three[5], (0, 0, 0))
+        self.assertEqual(three[11], (0, 0, 0))
+        self.assertEqual(three[6], tuple(values["controller_player_colour_2"]))
+
+        four = controller_frame(
+            "duo", "twin", 4, values=values, intro_age=4,
+            percents=[100, 75, 50, 25],
+        )
+        self.assertEqual(four[3], white)
+        self.assertEqual(four[5], white)
+        self.assertEqual(four[10], white)
+        self.assertEqual(four[16], white)
+        self.assertEqual(four[8], (0, 0, 0))
+        self.assertEqual(four[7], tuple(values["controller_player_colour_2"]))
+
+    def test_third_and_fourth_connection_reuse_selected_multiplayer_pattern(self):
+        clock = Clock()
+        provider = ControllerProvider(clock=clock)
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values["controller_duo_variant"] = "focus"
+        provider.update([controller(96)], values)
+        self.assertEqual(provider.update([controller(96), controller(41, "two")], values), "duo")
+        provider.clear_transients()
+        self.assertEqual(provider.update([
+            controller(96), controller(41, "two"), controller(73, "three"),
+        ], values), "duo")
+        provider.clear_transients()
+        self.assertEqual(provider.update([
+            controller(96), controller(41, "two"), controller(73, "three"), controller(28, "four"),
+        ], values), "duo")
+
+    def test_four_controller_preview_uses_all_four_fixed_seats(self):
+        clock = Clock()
+        provider = ControllerProvider(clock=clock)
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_colour_mode="players", controller_gauge_brightness=100)
+        self.assertTrue(provider.preview("duo", values, "twin", count=4, target=2))
+        clock.advance(2)
+        frame = provider.event_output().frame
+        self.assertEqual(frame[8], (0, 0, 0))
+        self.assertIn(tuple(values["controller_player_colour_1"]), frame[:4])
+        self.assertIn(tuple(values["controller_player_colour_2"]), frame[4:8])
+        self.assertIn(tuple(values["controller_player_colour_3"]), frame[9:13])
+        self.assertEqual(frame[16], (246, 249, 255))
+
+    def test_charging_preview_animates_the_selected_player_seat(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_colour_mode="players", controller_gauge_brightness=100,
+                      controller_duo_variant="twin")
+        zones = controller_zones(4)
+        for variant in VARIANTS["charging"]:
+            frames = []
+            for target in range(4):
+                clock = Clock()
+                provider = ControllerProvider(clock=clock)
+                self.assertTrue(provider.preview("charging", values, variant, count=4, target=target))
+                clock.advance(.8)
+                frame = provider.event_output().frame
+                frames.append(frame)
+                blue = tuple(values["controller_colour_charging"])
+                self.assertIn(blue, [frame[index] for index in zones[target]])
+            self.assertEqual(len({tuple(frame) for frame in frames}), 4, variant)
+
+    def test_brief_charging_animates_the_controller_that_started_charging(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_charging_mode="brief", controller_charging_enabled=True,
+                      controller_colour_mode="players", controller_gauge_brightness=100,
+                      controller_duo_variant="twin")
+        zones = controller_zones(4)
+        for variant in VARIANTS["charging"]:
+            frames = []
+            values["controller_charging_variant"] = variant
+            for target in range(4):
+                clock = Clock()
+                provider = ControllerProvider(clock=clock)
+                baseline = [controller(percent, f"p{index + 1}")
+                            for index, percent in enumerate((96, 41, 73, 28))]
+                provider.update(baseline, values)
+                charging = [dict(item) for item in baseline]
+                charging[target]["charging"] = True
+                self.assertEqual(provider.update(charging, values), "charging")
+                clock.advance(.8)
+                frame = provider.event_output().frame
+                frames.append(frame)
+                blue = tuple(values["controller_colour_charging"])
+                self.assertIn(blue, [frame[index] for index in zones[target]])
+            self.assertEqual(len({tuple(frame) for frame in frames}), 4, variant)
+
+    def test_player_seat_defaults_have_fifty_five_percent_hsl_lightness(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        for player in range(1, 5):
+            colour = values[f"controller_player_colour_{player}"]
+            lightness = round((max(colour) + min(colour)) / 510 * 100)
+            self.assertEqual(lightness, 55)
+
+    def test_unknown_middle_battery_keeps_its_empty_seat(self):
+        clock = Clock()
+        provider = ControllerProvider(clock=clock)
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_battery_display="everywhere", controller_gauge_brightness=100,
+                      controller_colour_mode="players")
+        provider.update([
+            controller(96), controller(None, "two"), controller(73, "three"),
+        ], values)
+        clock.advance(4)
+        frame = provider.persistent_output(values).frame
+        self.assertTrue(any(pixel != (0, 0, 0) for pixel in frame[0:5]))
+        self.assertTrue(all(pixel == (0, 0, 0) for pixel in frame[6:11]))
+        self.assertIn(tuple(values["controller_player_colour_3"]), frame[12:17])
+
+    def test_every_multiplayer_pattern_is_bounded_for_three_and_four_seats(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        for count, separators in ((3, (5, 11)), (4, (8,))):
+            levels = [96, 41, 73, 52][:count]
+            for variant in VARIANTS["duo"]:
+                for elapsed in (.1, 1.0, 2.2, 3.5, 5.8):
+                    with self.subTest(count=count, variant=variant, elapsed=elapsed):
+                        frame = controller_frame(
+                            "duo", variant, elapsed, values=values,
+                            intro_age=elapsed, percents=levels,
+                        )
+                        self.assertEqual(len(frame), 17)
+                        self.assertTrue(all(0 <= channel <= 255 for pixel in frame for channel in pixel))
+                        for index in separators:
+                            self.assertEqual(frame[index], (0, 0, 0))
+
+    def test_four_controller_continuous_charge_stays_inside_target_seat(self):
+        clock = Clock()
+        provider = ControllerProvider(clock=clock)
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_battery_display="everywhere",
+                      controller_charging_display="everywhere",
+                      controller_charging_variant="current",
+                      controller_colour_mode="players", controller_gauge_brightness=100)
+        provider.update([
+            controller(96), controller(41, "two"),
+            controller(73, "three", True), controller(52, "four"),
+        ], values)
+        clock.advance(4)
+        output = provider.persistent_output(values)
+        self.assertEqual(output.provider, "controller-charging")
+        blue = tuple(values["controller_colour_charging"])
+        white = (246, 249, 255)
+        self.assertTrue(all(pixel in ((0, 0, 0), blue, white) for pixel in output.frame[9:13]))
+        self.assertIn(blue, output.frame[9:13])
+        self.assertIn(tuple(values["controller_player_colour_2"]), output.frame[4:8])
+        self.assertIn(tuple(values["controller_player_colour_4"]), output.frame[13:17])
+        self.assertEqual(output.frame[8], (0, 0, 0))
 
     def test_duo_intro_delays_white_tips_and_settles_as_mirrored_gauges(self):
         values = SettingsStore("/nonexistent/signalbar-settings.json").all()

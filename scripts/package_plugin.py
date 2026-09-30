@@ -20,6 +20,7 @@ FILES = [
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "dist/index.js",
+    "witcher_mod/mods/modGabeCubeAuraTelemetry/content/scripts/local/gca_telemetry.ws",
 ]
 
 

@@ -188,6 +188,47 @@ class FeedbackTests(unittest.TestCase):
             store.update({"controller_colour_low": [float("inf"), 0, 0], "controller_gauge_brightness": None})
             self.assertEqual(store.all()["controller_colour_low"], [220, 12, 24])
             self.assertEqual(store.all()["controller_gauge_brightness"], 65)
+            values = store.update({
+                "controller_colour_mode": "players",
+                "controller_player_colour_3": [300, 119, -1],
+            })
+            self.assertEqual(values["controller_colour_mode"], "players")
+            self.assertEqual(values["controller_player_colour_3"], [255, 119, 0])
+            values = store.update({"controller_colour_mode": "mirrored"})
+            self.assertEqual(values["controller_colour_mode"], "battery")
+
+    def test_legacy_signals_only_does_not_reactivate_dormant_game_displays(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(json.dumps({
+                "mode": "events",
+                "display_profiles": {"42": "artwork", "99": "performance"},
+                "artwork_profiles": {"42": {"mode": "manual", "manual_y": .72}},
+                "controller_battery_display": "off",
+                "weather_display": "off",
+            }), encoding="utf-8")
+
+            store = SettingsStore(str(path))
+            values = store.all()
+            self.assertEqual(values["game_display"], "steam")
+            self.assertEqual(values["display_profiles"], {})
+            self.assertEqual(store.display_for(42)["selected"], "steam")
+            self.assertEqual(store.artwork_for(42)["mode"], "manual")
+            self.assertEqual(store.artwork_for(42)["manual_y"], .72)
+
+    def test_current_routing_keeps_explicit_game_overrides(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(json.dumps({
+                "mode": "events",
+                "signalbar_enabled": True,
+                "home_display": "steam",
+                "game_display": "steam",
+                "display_profiles": {"42": "artwork"},
+            }), encoding="utf-8")
+
+            store = SettingsStore(str(path))
+            self.assertEqual(store.display_for(42)["selected"], "artwork")
 
     def test_custom_gauge_colours_and_brightness_apply_to_both_players_and_previews(self):
         with tempfile.TemporaryDirectory() as folder:

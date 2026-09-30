@@ -1,4 +1,4 @@
-# Screen Sync in GabeCubeAura 1.2.0-beta1
+# Screen Sync in GabeCubeAura 1.2.0-beta3
 
 Screen Sync is integrated into GabeCubeAura's normal display routing. It uses
 the same Providers to Arbiter to Renderer pipeline as Artwork, Performance,
@@ -17,12 +17,24 @@ Screen Sync can run for four reasons:
 Screensaver and preview activation do not rewrite Home, in-game or per-game
 display choices.
 
+The Steam adapter only requires the read-only `GetActiveState` capability. It
+uses an active-state notification when available and keeps bounded polling as a
+fallback. During the screensaver, Screen Sync replaces Weather, Controllers,
+Customization+ or Performance without displacing temporary Light Events,
+controller alerts, previews, Game Launches or Steam hard-priority animations.
+
 ## Local capture and processing
 
-The backend discovers the Gamescope video node with `pw-dump`, starts a
+The backend checks every local PipeWire runtime with `pw-dump`, selects the
+session that actually exposes the Gamescope video node, then starts a
 GStreamer process without a shell and requests a 34 by 18 BGRx stream at 10
 frames per second. Only the newest frame is retained. Captured pixels are not
 saved, returned through Decky or sent over the network.
+
+Current PipeWire builds select the source by its stable `gamescope` target
+name, with a client name and a short keepalive for Gamescope's variable-rate
+stream. If that selector cannot start on an older build, supervision retries
+once with the discovered numeric node ID.
 
 Panorama maps 17 horizontal image zones to 17 LEDs. Ambient calculates one
 robust screen colour and repeats it across the bar. Processing includes linear
@@ -54,6 +66,11 @@ Steam keeps hard priority during startup, active downloads and repeated native
 LED writes. One isolated native transition receives a settle period before one
 automatic recovery. Genuine system activity can renew the priority lease, so
 GabeCubeAura does not fight Steam for the bar.
+
+An AppID transition is also a capture-session boundary. GabeCubeAura terminates
+the current `gst-launch-1.0` process and creates a new supervisor if Screen Sync
+is still requested, preventing a stale Gamescope/PipeWire client from being
+carried into the replacement pipeline's PAUSED preroll.
 
 ## Target-hardware checks still required
 

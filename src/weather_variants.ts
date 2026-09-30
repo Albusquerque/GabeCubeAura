@@ -32,8 +32,8 @@ export const WEATHER_VARIANTS: Record<WeatherCondition, { label: string; detail:
     { label: "Slow convergence", detail: "Clouds grow into one eight-LED cloud. It drifts left, returns right, then leaves the bar. 48-second loop." },
   ],
   cloud_night: [
-    { label: "Night passing shadow", detail: "One night-blue opening crosses a neutral cloud layer capped at brightness 35." },
-    { label: "Night passing shadows", detail: "Two night-blue openings keep the original separate opposing passes." },
+    { label: "Night passing shadow", detail: "One dim-white cloud crosses a continuous night-blue sky." },
+    { label: "Night passing shadows", detail: "Two dim-white clouds make separate opposing passes over night blue." },
     { label: "Night cross & gather", detail: "Low-white cloud pairs cross and gather over exact night blue. 20-second loop." },
     { label: "Night slow convergence", detail: "Low-white points become one eight-LED cloud and keep the original 48-second drift." },
   ],

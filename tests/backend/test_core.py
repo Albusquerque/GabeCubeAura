@@ -74,6 +74,22 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(Engine._stripmine_priority("none", values), "stripmine")
         self.assertEqual(Engine._stripmine_priority("valve", values), "stripmine")
 
+    def test_own_verified_red_frame_is_not_a_native_thermal_warning(self):
+        red_signature = (
+            ("manual", "1", "56"),
+            tuple(("255 0 0", "255") for _ in range(17)),
+        )
+        self.assertEqual(
+            Engine._native_priority_reason(
+                ValveLedHardware, red_signature, red_signature,
+            ),
+            "",
+        )
+        self.assertEqual(
+            Engine._native_priority_reason(ValveLedHardware, red_signature, None),
+            "Valve critical red hardware signal",
+        )
+
     def test_performance_mapping_zero_to_seventeen(self):
         self.assertEqual(sum(pixel != (0, 0, 0) for pixel in performance_frame(0, 60)), 0)
         self.assertEqual(sum(pixel != (0, 0, 0) for pixel in performance_frame(70, 60)), 12)
@@ -378,6 +394,33 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(guard.hard_priority)
         self.assertEqual(guard.hard_reason, "Steam download activity")
 
+    def test_guard_can_settle_across_brightness_only_native_churn(self):
+        clock = ManualClock()
+        guard = VanillaGuard(cooldown_s=5, stable_s=2, clock=clock)
+        guard.observe(
+            ("normal", "rgb", "brightness-1"),
+            stability_signature=("normal", "rgb"),
+        )
+        clock.advance(1.1)
+        self.assertFalse(guard.observe(
+            ("normal", "rgb", "brightness-2"),
+            stability_signature=("normal", "rgb"),
+        ))
+        clock.advance(1.0)
+        self.assertTrue(guard.observe(
+            ("normal", "rgb", "brightness-3"),
+            stability_signature=("normal", "rgb"),
+        ))
+
+        # Once GabeCubeAura has written, even brightness-only changes are an
+        # external takeover and must immediately restore Valve priority.
+        self.assertFalse(guard.observe(
+            ("manual", "gca", "brightness-4"),
+            expected_signature=("manual", "gca", "brightness-3"),
+            stability_signature=("manual", "gca"),
+        ))
+        self.assertEqual(guard.reason, "external LED change detected")
+
     def test_arbiter_transitions(self):
         arbiter = Arbiter()
         game = GameState(10, "Test")
@@ -425,7 +468,7 @@ class PersistenceTests(unittest.TestCase):
                 "controller_low_enabled": True, "controller_connect_variant": "welcome",
                 "controller_persistent_variant": "tip", "controller_low_variant": "beacon",
                 "controller_charging_variant": "breath", "controller_duo_variant": "double-welcome",
-                "controller_gauge_brightness": 65,
+                "controller_colour_mode": "battery", "controller_gauge_brightness": 65,
                 "reverse_led_order": True, "countdown_dark_edge_compensation": 2,
                 "weather_topbar_enabled": False, "weather_temperature_unit": "celsius",
                 "weather_brightness": 100, "weather_shadow_cutoff": 0,
@@ -441,6 +484,10 @@ class PersistenceTests(unittest.TestCase):
                 "controller_colour_medium": [230, 110, 0],
                 "controller_colour_low": [220, 12, 24],
                 "controller_colour_charging": [0, 145, 220],
+                "controller_player_colour_1": [36, 199, 245],
+                "controller_player_colour_2": [255, 167, 26],
+                "controller_player_colour_3": [106, 26, 255],
+                "controller_player_colour_4": [70, 210, 136],
             }.items():
                 self.assertEqual(store.all()[key], color, key)
             store.update({"mode": "artwork", "controller_battery_display": "off"})
@@ -699,6 +746,67 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual((Path(paths[0]) / "multi_intensity").read_text(), "16 0 0")
             self.assertEqual((Path(paths[-1]) / "multi_intensity").read_text(), "0 0 0")
             self.assertEqual(hardware.read_frame(), frame)
+
+    def test_renderer_claims_manual_mode_and_restores_valve_controls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = []
+            for index in range(17):
+                path = Path(directory) / f"valve-leds[{index}]"
+                path.mkdir()
+                (path / "multi_intensity").write_text(f"{index} 0 0")
+                (path / "brightness").write_text("255")
+                paths.append(str(path))
+            first = Path(paths[0])
+            (first / "effect").write_text("normal")
+            (first / "enabled").write_text("1")
+            (first / "brightness_scale").write_text("56")
+
+            hardware = ValveLedHardware(paths)
+            original = hardware.read_frame()
+            renderer = Renderer(hardware)
+            self.assertTrue(renderer.render(BLUE))
+            self.assertEqual((first / "effect").read_text(), "manual")
+            self.assertEqual((first / "enabled").read_text(), "1")
+            self.assertEqual(hardware.read_frame(), BLUE)
+            self.assertTrue(renderer.relinquish(True))
+            self.assertEqual(hardware.read_frame(), original)
+            self.assertEqual((first / "effect").read_text(), "normal")
+            self.assertEqual((first / "enabled").read_text(), "1")
+            self.assertEqual((first / "brightness_scale").read_text(), "56")
+
+    def test_native_valve_animation_and_critical_red_keep_hard_priority(self):
+        normal = (
+            ("normal", "1", "56"),
+            tuple(("0 0 255", "255") for _ in range(17)),
+        )
+        self.assertEqual(ValveLedHardware.native_priority_reason(normal), "")
+
+        download_animation = (
+            ("patrol", "1", "56"),
+            normal[1],
+        )
+        self.assertEqual(
+            ValveLedHardware.native_priority_reason(download_animation),
+            "Valve patrol hardware effect",
+        )
+
+        thermal_warning = (
+            ("normal", "1", "56"),
+            tuple(("255 0 0", "255") for _ in range(17)),
+        )
+        self.assertEqual(
+            ValveLedHardware.native_priority_reason(thermal_warning),
+            "Valve critical red hardware signal",
+        )
+
+        # A Witcher-style half red vitality meter must not be mistaken for a
+        # full-bar native thermal warning.
+        partial_red = (
+            ("normal", "1", "56"),
+            tuple(("255 0 0", "255") if index < 8 else ("0 0 0", "255")
+                  for index in range(17)),
+        )
+        self.assertEqual(ValveLedHardware.native_priority_reason(partial_red), "")
 
 
 if __name__ == "__main__":

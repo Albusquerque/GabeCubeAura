@@ -15,6 +15,12 @@ night-weather work prepared in the weather transposition mockup.
 - A Steam-lifetime session latch keeps the game AppID through temporary menu,
   overlay and idle gaps. Restoring the selected display no longer depends on
   moving a controller.
+- Steam Families registration now retries when the service is not ready during
+  plugin startup, and is rebuilt after resume instead of silently remaining
+  inactive for the whole game session.
+- Upgrading a v0.7.x Signals only or Disabled configuration no longer
+  reactivates dormant per-game Artwork or Performance displays. Per-game
+  artwork sampling choices are preserved.
 - Steam startup, download activity and repeated native LED writes retain hard
   priority. GabeCubeAura resumes only after that activity settles.
 - Weather now has 22 selectable loops. The beta adds 8 night transpositions:

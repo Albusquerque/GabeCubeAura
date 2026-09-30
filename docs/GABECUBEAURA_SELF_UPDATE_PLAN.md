@@ -606,7 +606,7 @@ Before the bootstrap release:
 - update README, release documentation and install links;
 - update the local publication remote before any authorized push;
 - search the complete release tree for obsolete public account URLs;
-- keep the author as `Albus Querque`.
+- keep the author as `Alyenax`.
 
 This cleanup must be a normal part of the release change. It must not be
 described publicly as a correction of an earlier mistake.

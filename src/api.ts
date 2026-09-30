@@ -11,7 +11,9 @@ export const setGameDisplay = callable<[appid: number, mode: string], Status>("s
 export const setSetting = callable<[key: string, value: unknown], Status>("set_setting");
 export const setArtworkSetting = callable<[appid: number, key: string, value: unknown], Status>("set_artwork_setting");
 export const setLaunchArtworkSetting = callable<[appid: number, key: string, value: unknown], Status>("set_launch_artwork_setting");
-export const gameChanged = callable<[appid: number, title: string, launch: boolean], Status>("game_changed");
+export const gameChanged = callable<[
+  appid: number, title: string, launch: boolean, source: string,
+], Status>("game_changed");
 export const getArtwork = callable<[appid: number, source: string, purpose: "artwork" | "launch"], ArtworkPayload>("get_artwork");
 export const submitArtwork = callable<[
   appid: number,
@@ -42,12 +44,23 @@ export const reportRuntimeDiagnostic = callable<[
 export const reportParentalMinutes = callable<[minutes: number], Status>("report_parental_minutes");
 export const startFreeTimer = callable<[minutes: number], Status>("start_free_timer");
 export const stopFreeTimer = callable<[], Status>("stop_free_timer");
+export const setWitcherLab = callable<[state: WitcherLabUpdate], Status>("set_witcher_lab");
+export const triggerWitcherSign = callable<[sign: WitcherSign], boolean>("trigger_witcher_sign");
+export const stopWitcherLab = callable<[], Status>("stop_witcher_lab");
+export const installWitcherTelemetryMod = callable<[], Status>("install_witcher_telemetry_mod");
+export const removeWitcherTelemetryMod = callable<[], Status>("remove_witcher_telemetry_mod");
+export const exportWitcherDiagnostics = callable<[], { path: string; generated_at: string }>("export_witcher_diagnostics");
 export const previewCountdown = callable<[], Status>("preview_countdown");
 export const triggerEvent = callable<[kind: string, preview: boolean, variant: string], boolean>("trigger_event");
 export const updateControllers = callable<[controllers: ControllerBatteryUpdate[], source: string], boolean>("update_controllers");
 export const resetControllers = callable<[], boolean>("reset_controllers");
 export const reportControllerTelemetry = callable<[state: ControllerTelemetry], boolean>("report_controller_telemetry");
-export const previewController = callable<[kind: string, variant: string], boolean>("preview_controller");
+export const previewController = callable<[
+  kind: string,
+  variant: string,
+  count: number,
+  target: number,
+], boolean>("preview_controller");
 export const searchWeatherCities = callable<[query: string], { results: WeatherLocation[]; error: string }>("search_weather_cities");
 export const previewWeather = callable<[condition: WeatherCondition, variant: number], boolean>("preview_weather");
 export const stopWeatherPreview = callable<[], boolean>("stop_weather_preview");
@@ -55,7 +68,12 @@ export const getUpdateStatus = callable<[], UpdateStatus>("get_update_status");
 export const checkForUpdates = callable<[], UpdateStatus>("check_for_updates");
 export const prepareUpdate = callable<[], UpdateStatus>("prepare_update");
 export const installPreparedUpdate = callable<[confirmationToken: string], { accepted: boolean; version: string }>("install_prepared_update");
-export const setUpdatePreferences = callable<[autoCheck: boolean, notifications: boolean], UpdateStatus>("set_update_preferences");
+export const setUpdatePreferences = callable<[
+  autoCheck: boolean,
+  notifications: boolean,
+  checkIntervalMinutes: number,
+  channel: "stable" | "beta",
+], UpdateStatus>("set_update_preferences");
 export const acknowledgeUpdateNotification = callable<[version: string], UpdateStatus>("acknowledge_update_notification");
 export const dismissUpdateError = callable<[], UpdateStatus>("dismiss_update_error");
 export const runUpdateLabScenario = callable<[scenario: UpdateLabResult["scenario"]], UpdateLabResult>("run_update_lab_scenario");
@@ -72,4 +90,14 @@ export interface ControllerBatteryUpdate {
   percent: number | null;
   level: number | null;
   charging: boolean | null;
+}
+
+export type WitcherSign = "aard" | "axii" | "igni" | "quen" | "yrden";
+export interface WitcherLabUpdate {
+  enabled?: boolean;
+  health?: number;
+  stamina?: number;
+  toxicity?: number;
+  adrenaline?: number;
+  combat?: boolean;
 }

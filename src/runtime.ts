@@ -18,13 +18,18 @@ import { ControllerMonitor, isSteamInputService } from "./controller_monitor";
 import { isSteamControllerStore } from "./controller_battery";
 import type { SteamControllerStore } from "./controller_battery";
 import { normalizeAppId } from "./steam_app_id";
-import { GameSessionLatch } from "./game_session";
+import { GameSessionLatch, selectObservedGame } from "./game_session";
 import type { GameSessionDecision } from "./game_session";
+import { ParentalPlaytimeSubscription } from "./parental_playtime";
 import {
   isSteamScreensaverService,
+  registerForScreensaverState,
   screensaverActiveFromResponse,
 } from "./steam_screensaver";
-import type { SteamScreensaverService } from "./steam_screensaver";
+import type {
+  SteamScreensaverRegistration,
+  SteamScreensaverService,
+} from "./steam_screensaver";
 import {
   classifySteamNotification,
   CommunityNotificationObserver,
@@ -41,10 +46,8 @@ type Registration = { unregister?: () => void } | undefined;
 
 function runningApp() {
   try {
-    const app: any = Router?.MainRunningApp;
-    const appid = normalizeAppId(app?.appid ?? app?.appID ?? app?.unAppID ?? app?.app_id);
-    const title = String(app?.display_name ?? app?.name ?? "");
-    return { appid, title };
+    const main: any = Router?.MainRunningApp;
+    return selectObservedGame(main, Router?.RunningApps);
   } catch {
     return { appid: 0, title: "" };
   }
@@ -66,14 +69,20 @@ class GabeCubeAuraRuntime {
   private confirmedKey = "";
   private syncing = false;
   private artworkGeneration = 0;
-  private parentalAppId = -1;
   private parentalWaitStartedAt = 0;
   private pollTimer: number | undefined;
   private retryTimer: number | undefined;
   private gameRegistration: Registration;
   private downloadRegistration: Registration;
   private resumeRegistration: Registration;
-  private parentalRegistration: Registration;
+  private parental = new ParentalPlaytimeSubscription(
+    () => {
+      const owner = SteamClient?.Parental;
+      const register = owner?.RegisterForParentalPlaytimeWarnings;
+      return typeof register === "function" ? { owner, register } : undefined;
+    },
+    (appid, minutes) => this.handleParentalMinutes(appid, minutes),
+  );
   private notificationsRegistration: Registration;
   private screenshotRegistration: Registration;
   private communityNotificationsTimer: number | undefined;
@@ -84,6 +93,8 @@ class GabeCubeAuraRuntime {
   private controllerMonitor: ControllerMonitor | undefined;
   private downloadActive = false;
   private screensaverService: SteamScreensaverService | undefined;
+  private screensaverRegistration: SteamScreensaverRegistration;
+  private screensaverRegistrationAttempted = false;
   private screensaverPolling = false;
   private screensaverFailures = 0;
 
@@ -116,7 +127,7 @@ class GabeCubeAuraRuntime {
     this.gameRegistration?.unregister?.();
     this.downloadRegistration?.unregister?.();
     this.resumeRegistration?.unregister?.();
-    this.parentalRegistration?.unregister?.();
+    this.parental.stop();
     this.notificationsRegistration?.unregister?.();
     this.screenshotRegistration?.unregister?.();
     this.communityNotificationStore = undefined;
@@ -124,6 +135,7 @@ class GabeCubeAuraRuntime {
     this.lastNativeCommentAt = 0;
     this.lastServerCommentAt = 0;
     this.downloadActive = false;
+    this.unregisterScreensaverState();
     this.screensaverService = undefined;
     this.screensaverFailures = 0;
     void this.controllerMonitor?.stop().then(() => resetControllers()).catch(console.warn);
@@ -134,6 +146,7 @@ class GabeCubeAuraRuntime {
 
   private observeRunningApp() {
     this.applySessionDecision(this.session.observePoll(runningApp()));
+    this.parental.ensure();
     void reportRuntimeDiagnostic(
       "heartbeat", this.desired.appid, "background runtime", 0,
     ).catch(() => undefined);
@@ -184,7 +197,9 @@ class GabeCubeAuraRuntime {
           const syncStartedAt = Date.now();
           const launch = current.launchSequence !== this.desired.launchSequence
             ? false : current.launchSequence > 0 && current.appid > 0;
-          const status = await gameChanged(current.appid, current.title, launch);
+          const status = await gameChanged(
+            current.appid, current.title, launch, current.source,
+          );
           const syncMs = Date.now() - syncStartedAt;
           this.confirmedKey = key;
           this.baselineEstablished = true;
@@ -194,7 +209,7 @@ class GabeCubeAuraRuntime {
           ).catch((error) => console.warn("[GabeCubeAura] runtime diagnostic failed", error));
           // Register only after the backend has accepted the new AppID. Some
           // Steam builds invoke this callback immediately on registration.
-          this.registerParentalSignal(current.appid);
+          this.parental.selectApp(current.appid);
           if (current.appid > 0) {
             const generation = this.artworkGeneration;
             void this.syncArtwork(current.appid, status, generation);
@@ -253,35 +268,21 @@ class GabeCubeAuraRuntime {
     }
   }
 
-  private registerParentalSignal(appid: number) {
-    if (appid === this.parentalAppId) return;
-    this.parentalAppId = appid;
-    this.parentalRegistration?.unregister?.();
-    this.parentalRegistration = undefined;
-    try {
-      this.parentalRegistration = SteamClient?.Parental?.RegisterForParentalPlaytimeWarnings?.(
-        (minutes: unknown) => {
-          const value = Number(minutes);
-          if (!Number.isFinite(value)) return;
-          const callbackDelay = this.parentalWaitStartedAt
-            ? Math.max(0, Date.now() - this.parentalWaitStartedAt)
-            : 0;
-          this.parentalWaitStartedAt = 0;
-          void reportRuntimeDiagnostic(
-            "parental_received", appid, "Steam callback", callbackDelay,
-          ).catch((error) => console.warn("[GabeCubeAura] runtime diagnostic failed", error));
-          void reportParentalMinutes(value).catch((error) => {
-            console.warn("[GabeCubeAura] parental playtime signal failed", error);
-          });
-        },
-      );
-    } catch (error) {
-      console.warn("[GabeCubeAura] Steam Families playtime hook unavailable", error);
-    }
+  private handleParentalMinutes(appid: number, minutes: number) {
+    const callbackDelay = this.parentalWaitStartedAt
+      ? Math.max(0, Date.now() - this.parentalWaitStartedAt)
+      : 0;
+    this.parentalWaitStartedAt = 0;
+    void reportRuntimeDiagnostic(
+      "parental_received", appid, "Steam callback", callbackDelay,
+    ).catch((error) => console.warn("[GabeCubeAura] runtime diagnostic failed", error));
+    void reportParentalMinutes(minutes).catch((error) => {
+      console.warn("[GabeCubeAura] parental playtime signal failed", error);
+    });
   }
 
   private registerSteamEvents() {
-    this.registerParentalSignal(0);
+    this.parental.selectApp(0);
     this.registerLightEvents();
     this.registerControllerSignals();
     try {
@@ -304,6 +305,8 @@ class GabeCubeAuraRuntime {
     try {
       this.resumeRegistration = SteamClient?.System?.RegisterForOnResumeFromSuspend?.(() => {
         void this.controllerMonitor?.refresh();
+        this.parental.selectApp(0);
+        this.parentalWaitStartedAt = 0;
         const stale = runningApp();
         this.applySessionDecision(this.session.suspend(stale.appid));
       });
@@ -339,6 +342,7 @@ class GabeCubeAuraRuntime {
         );
         return;
       }
+      this.ensureScreensaverStateRegistration();
       const response = await Promise.race([
         Promise.resolve(this.screensaverService.GetActiveState({})),
         new Promise<never>((_resolve, reject) => window.setTimeout(
@@ -352,7 +356,10 @@ class GabeCubeAuraRuntime {
       await setScreenSyncContext("steam-screensaver", active, "available", "");
     } catch (error) {
       this.screensaverFailures += 1;
-      if (this.screensaverFailures >= 2) this.screensaverService = undefined;
+      if (this.screensaverFailures >= 2) {
+        this.unregisterScreensaverState();
+        this.screensaverService = undefined;
+      }
       await setScreenSyncContext(
         "steam-screensaver",
         false,
@@ -362,6 +369,37 @@ class GabeCubeAuraRuntime {
     } finally {
       this.screensaverPolling = false;
     }
+  }
+
+  private ensureScreensaverStateRegistration() {
+    if (!this.screensaverService || this.screensaverRegistrationAttempted) return;
+    this.screensaverRegistrationAttempted = true;
+    this.screensaverRegistration = registerForScreensaverState(
+      this.screensaverService,
+      (response) => {
+        if (!this.alive) return;
+        const active = screensaverActiveFromResponse(response);
+        if (active === null) return;
+        this.screensaverFailures = 0;
+        void setScreenSyncContext(
+          "steam-screensaver", active, "available", "",
+        ).catch(() => undefined);
+      },
+    );
+  }
+
+  private unregisterScreensaverState() {
+    try {
+      if (this.screensaverRegistration?.unregister) {
+        this.screensaverRegistration.unregister();
+      } else {
+        this.screensaverRegistration?.Unregister?.();
+      }
+    } catch {
+      // The bounded polling path remains safe if Steam invalidated the handle.
+    }
+    this.screensaverRegistration = undefined;
+    this.screensaverRegistrationAttempted = false;
   }
 
   private emitLightEvent(kind: LightEvent) {

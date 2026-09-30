@@ -86,10 +86,16 @@ DEFAULTS = {
     "controller_low_variant": "beacon",
     "controller_charging_variant": "breath",
     "controller_duo_variant": "double-welcome",
+    "controller_colour_mode": "battery",
     "controller_colour_normal": [0, 180, 45],
     "controller_colour_medium": [230, 110, 0],
     "controller_colour_low": [220, 12, 24],
     "controller_colour_charging": [0, 145, 220],
+    "controller_player_colour_1": [36, 199, 245],
+    "controller_player_colour_2": [255, 167, 26],
+    "controller_player_colour_3": [106, 26, 255],
+    "controller_player_colour_4": [70, 210, 136],
+    "controller_player_palette_revision": 1,
     "controller_gauge_brightness": 65,
     "weather_display": "off",
     "weather_location": None,
@@ -116,10 +122,13 @@ DEFAULTS = {
     "stripmine_priority_game_launches": "signalbar",
     "stripmine_priority_customization": "stripmine",
     "stripmine_priority_screen_sync": "stripmine",
+    "stripmine_priority_witcher": "signalbar",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
     "updates_auto_check": True,
     "updates_notifications": True,
+    "updates_check_interval_minutes": 1440,
+    "updates_channel": "stable",
 }
 
 VALID_MODES = {"artwork", "performance", "customization", "screen_sync", "events", "disabled"}
@@ -203,6 +212,11 @@ class SettingsStore:
                     for key in DEFAULTS:
                         if key in raw:
                             self._data[key] = raw[key]
+                    legacy_routing = (
+                        "signalbar_enabled" not in raw
+                        and "home_display" not in raw
+                        and "game_display" not in raw
+                    )
                     if raw.get("weather_sequence_revision") not in (10, 11, 12):
                         migration = {
                             "clear_night": {0: 0, 3: 1},
@@ -223,6 +237,16 @@ class SettingsStore:
                             self._data["controller_charging_mode"] = (
                                 "brief" if raw.get("controller_charging_enabled", True) else "off"
                             )
+                    if raw.get("controller_player_palette_revision") != 1:
+                        old_defaults = (
+                            [37, 200, 245], [255, 180, 59],
+                            [167, 119, 255], [75, 211, 138],
+                        )
+                        for player, old_default in enumerate(old_defaults, 1):
+                            key = f"controller_player_colour_{player}"
+                            if key not in raw or raw.get(key) == old_default:
+                                self._data[key] = list(DEFAULTS[key])
+                        self._data["controller_player_palette_revision"] = 1
                     # v0.7.x stored one display mode plus independent context
                     # switches. Preserve the effective Home/game result once,
                     # then make the new routing fields authoritative.
@@ -254,6 +278,12 @@ class SettingsStore:
                             self._data["game_display"] = raw["mode"]
                         else:
                             self._data["game_display"] = "steam"
+                    # In v0.7.x, Signals only and Disabled suppressed every
+                    # saved per-game permanent display. Do not reactivate a
+                    # dormant Artwork or Performance override during routing
+                    # migration. Artwork sampling choices remain preserved.
+                    if legacy_routing and raw.get("mode") in {"events", "disabled"}:
+                        self._data["display_profiles"] = {}
             except (OSError, ValueError, TypeError):
                 pass
             self._validate()
@@ -268,6 +298,7 @@ class SettingsStore:
             "stripmine_priority_game_launches",
             "stripmine_priority_customization",
             "stripmine_priority_screen_sync",
+            "stripmine_priority_witcher",
         ):
             if self._data[key] not in VALID_COMPANION_PRIORITIES:
                 self._data[key] = DEFAULTS[key]
@@ -346,6 +377,8 @@ class SettingsStore:
         for key in (
             "temperature_custom_cool", "temperature_custom_middle", "temperature_custom_hot",
             "controller_colour_normal", "controller_colour_medium", "controller_colour_low", "controller_colour_charging",
+            "controller_player_colour_1", "controller_player_colour_2",
+            "controller_player_colour_3", "controller_player_colour_4",
             "customization_colour_1", "customization_colour_2", "customization_colour_3",
         ):
             value = self._data.get(key)
@@ -360,6 +393,7 @@ class SettingsStore:
             self._data["controller_gauge_brightness"] = max(10, min(100, int(self._data["controller_gauge_brightness"])))
         except (TypeError, ValueError, OverflowError):
             self._data["controller_gauge_brightness"] = DEFAULTS["controller_gauge_brightness"]
+        self._data["controller_player_palette_revision"] = 1
         raw_display = self._data.get("display_profiles")
         display = {}
         if isinstance(raw_display, dict):
@@ -380,12 +414,24 @@ class SettingsStore:
             "controller_charging_enabled", "updates_auto_check", "updates_notifications",
         ):
             self._data[key] = bool(self._data[key])
+        try:
+            interval = int(self._data["updates_check_interval_minutes"])
+        except (TypeError, ValueError, OverflowError):
+            interval = DEFAULTS["updates_check_interval_minutes"]
+        self._data["updates_check_interval_minutes"] = (
+            interval if interval in {15, 60, 180, 360, 720, 1440}
+            else DEFAULTS["updates_check_interval_minutes"]
+        )
+        if self._data["updates_channel"] not in {"stable", "beta"}:
+            self._data["updates_channel"] = DEFAULTS["updates_channel"]
         for key, choices in EVENT_VARIANTS.items():
             if not isinstance(self._data[key], str) or self._data[key] not in choices:
                 self._data[key] = DEFAULTS[key]
         if (not isinstance(self._data["controller_battery_display"], str)
                 or self._data["controller_battery_display"] not in {"off", "home", "game", "everywhere"}):
             self._data["controller_battery_display"] = DEFAULTS["controller_battery_display"]
+        if self._data.get("controller_colour_mode") not in {"battery", "players"}:
+            self._data["controller_colour_mode"] = DEFAULTS["controller_colour_mode"]
         if self._data["weather_display"] not in {"off", "home", "game", "everywhere"}:
             self._data["weather_display"] = DEFAULTS["weather_display"]
         if not isinstance(self._data["weather_topbar_enabled"], bool):

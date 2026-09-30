@@ -379,22 +379,21 @@ def _cloud_night(frame, variant, time):
         _night_slow_convergence(frame, time)
         return
 
-    for index in range(LED_COUNT):
-        frame[index] = NIGHT_CLOUD[:]
+    _night_base(frame)
 
-    def shadow(centre, power=1):
+    def cloud(centre, power=1):
         for index in range(LED_COUNT):
-            dip = math.exp(-((index - centre) / 3.1) ** 2) * power
-            if dip > .12:
-                frame[index] = (NIGHT if dip > .55 else NIGHT_CLOUD)[:]
+            presence = math.exp(-((index - centre) / 3.1) ** 2) * power
+            if presence > .12:
+                frame[index] = NIGHT_CLOUD[:]
 
     if variant == 0:
-        shadow(-5 + time * 3.25)
+        cloud(-5 + time * 3.25)
     elif variant == 1:
         if .2 <= time < 3.65:
-            shadow(-4 + (time - .2) * 4.2, smooth(.2, .7, time) * (1 - smooth(3.15, 3.65, time)))
+            cloud(-4 + (time - .2) * 4.2, smooth(.2, .7, time) * (1 - smooth(3.15, 3.65, time)))
         if 4 <= time < 7.8:
-            shadow(21 - (time - 4) * 3.75, smooth(4, 4.55, time) * (1 - smooth(7.25, 7.8, time)))
+            cloud(21 - (time - 4) * 3.75, smooth(4, 4.55, time) * (1 - smooth(7.25, 7.8, time)))
 
 
 def _partly_cloudy(frame, variant, time, night):
