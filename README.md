@@ -1,5 +1,10 @@
 # GabeCubeAura
 
+> **Public beta available:** [GabeCubeAura 1.2.0-beta.3](https://github.com/Alyenax/GabeCubeAura/blob/v1.2.0-beta.3/README.md)
+> adds real-time Screen Sync, fixed layouts for up to four controllers, richer
+> night Weather scenes and an experimental live HUD Lab for The Witcher 3.
+> This is prerelease software; the stable version remains v1.1.3.
+
 **Game artwork, custom effects, weather and live status lighting for the
 official Steam Machine's 17-pixel light bar.**
 
