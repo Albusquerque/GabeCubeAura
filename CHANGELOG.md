@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.2 - 2026-09-30
+
+This focused recovery release fixes the final launch step of the direct updater.
+It contains no Screen Sync, Weather, controller or other 1.2.0 feature changes.
+
+- Remove Decky Loader's bundled library and Python runtime overrides before
+  starting the SteamOS `systemd-run` command.
+- Keep the original helper launch failure detail in the Decky backend log while
+  retaining a short error in the interface.
+- Add coverage that launches the helper from a deliberately contaminated Decky
+  environment and verifies that system commands receive a clean environment.
+- Require one manual installation of 1.1.2 for versions 1.0.0, 1.1.0 and 1.1.1.
+  Future releases can then use the repaired in-plugin update flow.
+- Validate the corrected launcher on the Steam Machine by updating a local
+  1.1.0 test build to the unmodified public 1.1.1 release.
+
 ## 1.1.1 - 2026-09-30
 
 This maintenance release exists to validate GabeCubeAura's direct updater on

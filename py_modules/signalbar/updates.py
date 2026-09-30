@@ -54,6 +54,17 @@ SYSTEM_CA_BUNDLES = (
     "/etc/ssl/certs/ca-certificates.crt",
     "/etc/ssl/certs/ca-bundle.crt",
 )
+
+
+def _clean_system_command_environment():
+    """Keep Decky's bundled libraries away from SteamOS system commands."""
+    environment = os.environ.copy()
+    for name in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONHOME", "PYTHONPATH"):
+        environment.pop(name, None)
+    environment["LD_LIBRARY_PATH"] = ""
+    return environment
+
+
 STABLE_VERSION = re.compile(r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 TEST_VERSION = re.compile(
     r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$"
@@ -808,8 +819,15 @@ class UpdateManager:
             interpreter, str(helper_target), str(transaction_path),
         ]
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
+            subprocess.run(
+                command, check=True, capture_output=True, text=True, timeout=10,
+                env=_clean_system_command_environment(),
+            )
         except (OSError, subprocess.SubprocessError) as error:
+            stdout = str(getattr(error, "stdout", "") or "").strip().replace("\n", " ")
+            stderr = str(getattr(error, "stderr", "") or "").strip().replace("\n", " ")
+            detail = stderr or stdout or type(error).__name__
+            self.logger.warning(f"Independent update helper launch failed: {detail[:500]}")
             self._set(phase="error", pending_token="", pending_version="",
                       error_category="helper_launch", error="Could not start the independent update helper")
             raise UpdateError("helper_launch", "Could not start the independent update helper") from error

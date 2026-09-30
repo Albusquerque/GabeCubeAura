@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import warnings
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 
@@ -332,6 +333,48 @@ class UpdateTests(unittest.TestCase):
             self.assertFalse(discovered["return_to_stable"])
             self.assertEqual(prepared["phase"], "ready")
             self.assertTrue((base / "runtime/updates/staged" / prepared["confirmation_token"] / "GabeCubeAura").is_dir())
+
+    def test_helper_launch_removes_decky_runtime_libraries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "GabeCubeAura-v1.1.1.zip"
+            write_archive(archive, "1.1.1")
+            active = base / "plugins/GabeCubeAura"
+            write_plugin(active, "1.1.0")
+            manager = UpdateManager(
+                "1.1.0", SettingsStore(str(base / "settings/config.json")),
+                str(base / "runtime"), str(active), FakeLogger(),
+                client=FakeClient(archive, "1.1.1"),
+            )
+            manager.check()
+            prepared = manager.prepare()
+
+            poisoned = {
+                "PATH": "/usr/bin:/bin",
+                "LD_LIBRARY_PATH": "/tmp/_MEI-decky",
+                "LD_PRELOAD": "/tmp/decky-preload.so",
+                "PYTHONHOME": "/tmp/decky-python",
+                "PYTHONPATH": "/tmp/decky-modules",
+                "LANG": "C.UTF-8",
+            }
+            with patch.dict("signalbar.updates.os.environ", poisoned, clear=True), \
+                    patch(
+                        "signalbar.updates.shutil.which",
+                        side_effect=["/usr/bin/python3", "/usr/bin/systemd-run"],
+                    ), \
+                    patch("signalbar.updates.subprocess.run") as launched:
+                accepted = manager.install(prepared["confirmation_token"])
+
+            self.assertTrue(accepted["accepted"])
+            environment = launched.call_args.kwargs["env"]
+            self.assertEqual(environment["LD_LIBRARY_PATH"], "")
+            self.assertNotIn("LD_PRELOAD", environment)
+            self.assertNotIn("PYTHONHOME", environment)
+            self.assertNotIn("PYTHONPATH", environment)
+            self.assertEqual(environment["LANG"], "C.UTF-8")
+            command = launched.call_args.args[0]
+            self.assertEqual(command[0], "/usr/bin/systemd-run")
+            self.assertEqual(command[-3], "/usr/bin/python3")
 
     def test_switching_from_stable_to_beta_checks_immediately_and_prepares_beta(self):
         with tempfile.TemporaryDirectory() as directory:

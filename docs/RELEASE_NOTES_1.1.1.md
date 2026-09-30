@@ -1,5 +1,13 @@
 # GabeCubeAura 1.1.1
 
+## Update notice
+
+The updater in this release can download and verify a new package, but may fail
+with `Could not start the independent update helper` when installation begins.
+Install [GabeCubeAura 1.1.2](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.2)
+once through Decky Developer settings. Updates after 1.1.2 can use the repaired
+in-plugin flow.
+
 GabeCubeAura 1.1.1 is a deliberately small maintenance release built directly
 from 1.1.0. Its purpose is to validate the public stable OTA path before the
 larger 1.2.0 beta is offered. It does not include Screen Sync, new Weather
@@ -32,8 +40,8 @@ build.
 
 ## Installation
 
-Existing GabeCubeAura 1.1.0 installations can discover and install 1.1.1 from
-**Settings > Updates**.
+The 1.1.0 to 1.1.1 update path was used to validate the corrected helper locally.
+Public 1.1.0 and 1.1.1 installations should install 1.1.2 manually once.
 
 For a manual installation:
 
@@ -48,11 +56,11 @@ For a manual installation:
 The release also provides `GabeCubeAura.zip` as a fixed-name recovery download
 and `SHA256SUMS` for both archives.
 
-## Validation order
+## Validation result
 
-First validate the complete 1.1.0 to 1.1.1 update on the Steam Machine. Only
-after that succeeds should `1.2.0-beta.2` be published as a prerelease and
-tested through the Beta channel.
+The complete 1.1.0 to public 1.1.1 update succeeded on the Steam Machine with
+the corrected helper launcher. Version 1.1.2 carries that correction for future
+updates.
 
 ## Coming very soon on the Beta channel
 
