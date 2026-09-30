@@ -1,7 +1,8 @@
 # GabeCubeAura 1.1.2
 
-GabeCubeAura 1.1.2 is a focused recovery release for direct updates. It contains
-no Screen Sync, Weather, controller or other 1.2.0 feature changes.
+GabeCubeAura 1.1.2 is a focused recovery release for direct updates. It does
+**not** include Screen Sync, the new Weather animations, 4-controller support,
+or any of the other changes currently in the 1.2.0 beta.
 
 ## Fixed
 

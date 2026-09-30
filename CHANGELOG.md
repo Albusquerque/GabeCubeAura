@@ -3,7 +3,9 @@
 ## 1.1.3 - 2026-09-30
 
 This maintenance release makes the latest updater correction available under a
-new version, so existing 1.1.2 installations can receive it normally.
+new version, so existing 1.1.2 installations can receive it normally. It does
+**not** include Screen Sync, the new Weather animations, 4-controller support,
+or any of the other changes currently in the 1.2.0 beta.
 
 - Make **Check now** bypass the stored GitHub ETag and request the complete
   current release. A manual check can no longer miss a newly published version
@@ -22,7 +24,8 @@ new version, so existing 1.1.2 installations can receive it normally.
 ## 1.1.2 - 2026-09-30
 
 This focused recovery release fixes the final launch step of the direct updater.
-It contains no Screen Sync, Weather, controller or other 1.2.0 feature changes.
+It does **not** include Screen Sync, the new Weather animations, 4-controller
+support, or any of the other changes currently in the 1.2.0 beta.
 
 - Remove Decky Loader's bundled library and Python runtime overrides before
   starting the SteamOS `systemd-run` command.
@@ -47,8 +50,8 @@ It contains no Screen Sync, Weather, controller or other 1.2.0 feature changes.
 
 This maintenance release exists to validate GabeCubeAura's direct updater on
 the public stable path before distributing the larger 1.2.0 beta. It is built
-from 1.1.0 and contains no Screen Sync, Weather, controller or other 1.2.0
-feature changes.
+from 1.1.0 and does **not** include Screen Sync, the new Weather animations,
+4-controller support, or any of the other changes currently in the 1.2.0 beta.
 
 - Add automatic update intervals of 15 minutes, 1, 3, 6, 12 or 24 hours.
 - Add Stable and Beta update channels. Stable remains the default. Beta can
