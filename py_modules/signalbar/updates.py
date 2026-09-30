@@ -724,7 +724,7 @@ class UpdateManager:
             result.pop("completed_token", None)
             return result
 
-    def check(self):
+    def check(self, force_refresh=False):
         self._reconcile_helper_state()
         if self._state.get("phase") in {"downloading", "verifying", "ready", "installing", "restart_pending"}:
             return self.status()
@@ -734,7 +734,11 @@ class UpdateManager:
         try:
             channel = self._configured_channel()
             client = self._release_client(channel)
-            etag = self._state.get("etag", "") if self._state.get("checked_channel") == channel else ""
+            etag = (
+                self._state.get("etag", "")
+                if not force_refresh and self._state.get("checked_channel") == channel
+                else ""
+            )
             release = client.latest(self.installed_version, etag=etag)
             now = int(self.clock())
             if release.get("not_modified"):

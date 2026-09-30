@@ -15,6 +15,8 @@ It contains no Screen Sync, Weather, controller or other 1.2.0 feature changes.
   `restart_pending`, then allow update checks and channel selection again.
 - Close an older `restart_pending` transaction when a newer manual installation
   has already replaced its target version.
+- Make `Check now` bypass the stored GitHub ETag so a manual check always reads
+  the current release, while automatic checks retain conditional requests.
 - Add coverage that launches the helper from a deliberately contaminated Decky
   environment and verifies that system commands receive a clean environment.
 - Require one manual installation of 1.1.2 for versions 1.0.0, 1.1.0 and 1.1.1.

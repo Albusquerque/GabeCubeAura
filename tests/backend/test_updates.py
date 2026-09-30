@@ -81,6 +81,14 @@ class FakeClient:
         return self.digest
 
 
+class ConditionalFakeClient(FakeClient):
+    def latest(self, installed_version, *, etag=""):
+        self.calls.append((installed_version, etag))
+        if etag:
+            return {"not_modified": True, "etag": etag}
+        return dict(self.release)
+
+
 class FakeLogger:
     def warning(self, message):
         pass
@@ -462,6 +470,32 @@ class UpdateTests(unittest.TestCase):
             settings.update({"updates_auto_check": False})
             manager._check_on_startup()
             self.assertEqual(len(client.calls), 1)
+
+    def test_manual_check_bypasses_a_stale_etag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            archive = base / "GabeCubeAura-v1.1.2.zip"
+            write_archive(archive, "1.1.2")
+            client = ConditionalFakeClient(archive, "1.1.2")
+            manager = UpdateManager(
+                "1.1.1", SettingsStore(str(base / "settings/config.json")),
+                str(base / "runtime"), str(base / "plugins/GabeCubeAura"),
+                FakeLogger(), client=client,
+            )
+            manager._set(
+                phase="up_to_date", checked_channel="stable",
+                etag='"stale-release"', available_version="",
+            )
+
+            automatic = manager.check()
+            manual = manager.check(force_refresh=True)
+
+            self.assertEqual(client.calls[0], ("1.1.1", '"stale-release"'))
+            self.assertEqual(client.calls[1], ("1.1.1", ""))
+            self.assertEqual(automatic["phase"], "up_to_date")
+            self.assertEqual(automatic["available_version"], "")
+            self.assertEqual(manual["phase"], "available")
+            self.assertEqual(manual["available_version"], "1.1.2")
 
     def test_health_acknowledgement_only_matches_pending_version_and_token(self):
         with tempfile.TemporaryDirectory() as directory:

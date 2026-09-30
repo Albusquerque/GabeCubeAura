@@ -22,6 +22,10 @@ state after a short grace period, which re-enables update checks and Stable or
 Beta channel selection. A newer manual installation also closes an older
 `restart_pending` transaction automatically instead of inheriting its lock.
 
+`Check now` also bypasses the stored GitHub ETag and requests the complete
+current release. Automatic checks keep conditional requests, but a manual check
+can no longer miss a newly published release because of stale cached state.
+
 ## One-time manual installation
 
 Versions 1.0.0, 1.1.0 and 1.1.1 must install 1.1.2 manually. The correction has

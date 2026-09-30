@@ -222,7 +222,9 @@ class Plugin:
         return self.update_manager.status()
 
     async def check_for_updates(self):
-        return await asyncio.get_running_loop().run_in_executor(None, self.update_manager.check)
+        return await asyncio.get_running_loop().run_in_executor(
+            None, self.update_manager.check, True,
+        )
 
     async def prepare_update(self):
         return await asyncio.get_running_loop().run_in_executor(None, self.update_manager.prepare)
