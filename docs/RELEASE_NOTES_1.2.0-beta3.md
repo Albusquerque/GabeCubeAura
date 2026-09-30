@@ -55,8 +55,3 @@ the saved Customization+ fallback during the native game-launch handoff.
 Install `GabeCubeAura-v1.2.0-beta3.zip` through Decky Developer settings without
 extracting it, or select Beta from GabeCubeAura's Updates page. Keep the stable
 v1.1.3 ZIP and a configuration export available for rollback.
-
-This remains beta software. Software tests cannot confirm every physical
-direction, diffuser appearance or reaction latency on every SteamOS build. See
-the [beta3 validation plan](BETA_TEST_PLAN_1.2.0-beta3.md) when reporting a
-target-hardware issue.
