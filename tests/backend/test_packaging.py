@@ -28,7 +28,7 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.1.2"', package)
+        self.assertIn('"version": "1.1.3"', package)
         self.assertIn('"url": "git+https://github.com/Alyenax/GabeCubeAura.git"', package)
         self.assertNotIn("Albusquerque/GabeCubeAura", package)
         self.assertIn('routerHook.addRoute("/gabecubeaura/settings", GabeCubeAuraSettings)', panel)

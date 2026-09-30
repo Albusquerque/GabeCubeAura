@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.3 - 2026-09-30
+
+This maintenance release makes the latest updater correction available under a
+new version, so existing 1.1.2 installations can receive it normally.
+
+- Make **Check now** bypass the stored GitHub ETag and request the complete
+  current release. A manual check can no longer miss a newly published version
+  because GitHub returned `304 Not Modified` for stale local update state.
+- Keep conditional ETag requests for automatic checks, preserving the lighter
+  background polling behaviour.
+- Remove the need to change between Stable and Beta merely to reveal an update.
+  Channel changes continue to trigger an immediate check as intended.
+- Retain the independent helper launch, restart-state recovery, package
+  verification, Stable and Beta channels, selectable intervals and rollback
+  safeguards from 1.1.2.
+- Validate the correction on the Steam Machine with a local 1.1.0 test package:
+  **Check now** detected the public 1.1.2 release directly on Stable without a
+  channel change.
+
 ## 1.1.2 - 2026-09-30
 
 This focused recovery release fixes the final launch step of the direct updater.
