@@ -1,13 +1,7 @@
 # GabeCubeAura 1.2.0-beta3
 
-> **WARNING: physical LED ownership regression:** read
-> [`IMPORTANT_LED_OWNERSHIP_REGRESSION.md`](../IMPORTANT_LED_OWNERSHIP_REGRESSION.md)
-> before reusing or merging the original beta1/beta3 ownership code. A logical
-> preview is not proof that the Valve controller received the frame. The hard
-> Steam priority is an intentional safety guard and must not be removed.
-
-This public prerelease carries every beta2 controller, Screen Sync, Weather and update
-channel change into a dedicated The Witcher 3 physical-light experiment.
+This public prerelease carries every beta2 controller, Screen Sync, Weather and
+update-channel change into a dedicated The Witcher 3 physical-light experiment.
 
 ## Beta update channel and documentation
 
