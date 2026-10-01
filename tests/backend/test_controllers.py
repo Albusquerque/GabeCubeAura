@@ -11,6 +11,7 @@ from signalbar.backend import Engine
 from signalbar.models import GameState, ProviderOutput, normalize_frame
 from signalbar.providers.controller import (
     ControllerProvider, DURATIONS, VARIANTS, controller_frame, controller_zones,
+    effective_controller_colour_mode,
 )
 from signalbar.settings import SettingsStore
 
@@ -183,6 +184,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(store.all()["controller_charging_mode"], "continuous-home")
             self.assertEqual(store.all()["controller_charging_display"], "home")
             self.assertEqual(store.all()["controller_alert_context"], "both")
+            self.assertEqual(store.all()["controller_colour_preset"], "automatic")
             store.update({"controller_battery_display": "home", "controller_charging_mode": "continuous-home",
                           "controller_connect_variant": "orbit"})
             restored = SettingsStore(path)
@@ -213,6 +215,67 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(values["controller_player_colour_3"], [106, 26, 255])
             self.assertEqual(values["controller_player_colour_4"], [70, 210, 136])
             self.assertEqual(values["controller_player_palette_revision"], 1)
+            self.assertEqual(values["controller_colour_preset"], "manual")
+
+    def test_legacy_controller_colours_migrate_without_overwriting_user_intent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            cases = (
+                ({"controller_colour_mode": "battery"}, "automatic"),
+                ({"controller_colour_mode": "players"}, "manual"),
+                ({"controller_colour_mode": "battery", "controller_colour_normal": [1, 2, 3]}, "manual"),
+            )
+            for raw, expected in cases:
+                with self.subTest(raw=raw):
+                    path.write_text(json.dumps(raw), encoding="utf-8")
+                    self.assertEqual(
+                        SettingsStore(str(path)).all()["controller_colour_preset"], expected
+                    )
+
+    def test_automatic_colour_preset_switches_at_two_controllers(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values["controller_gauge_brightness"] = 100
+        self.assertEqual(effective_controller_colour_mode(values, 1), "battery")
+        for count in (2, 3, 4):
+            self.assertEqual(effective_controller_colour_mode(values, count), "players")
+            frame = controller_frame(
+                "duo", "twin", 4, values=values, intro_age=4,
+                percents=[100] * count,
+            )
+            for player, zone in enumerate(controller_zones(count)):
+                self.assertEqual(
+                    frame[zone[0]], tuple(values[f"controller_player_colour_{player + 1}"])
+                )
+        single = controller_frame("persistent", "clean", 1, 80, values=values)
+        self.assertEqual(single[0], tuple(values["controller_colour_normal"]))
+
+    def test_manual_colour_preset_keeps_the_selected_meaning_at_every_count(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values.update(controller_colour_preset="manual", controller_colour_mode="battery",
+                      controller_gauge_brightness=100)
+        multiple = controller_frame(
+            "duo", "twin", 4, values=values, intro_age=4, percents=[100, 100]
+        )
+        self.assertEqual(multiple[0], tuple(values["controller_colour_normal"]))
+        values["controller_colour_mode"] = "players"
+        single = controller_frame("persistent", "clean", 1, 80, values=values)
+        self.assertEqual(single[0], tuple(values["controller_player_colour_1"]))
+
+    def test_automatic_preview_uses_the_selected_preview_count(self):
+        values = SettingsStore("/nonexistent/signalbar-settings.json").all()
+        values["controller_gauge_brightness"] = 100
+        single_clock = Clock()
+        single = ControllerProvider(clock=single_clock)
+        self.assertTrue(single.preview("persistent", values, "clean", count=1, target=0))
+        self.assertEqual(
+            single.event_output().frame[0], tuple(values["controller_colour_normal"])
+        )
+        multi_clock = Clock()
+        multi = ControllerProvider(clock=multi_clock)
+        self.assertTrue(multi.preview("persistent", values, "clean", count=4, target=2))
+        self.assertEqual(
+            multi.event_output().frame[0], tuple(values["controller_player_colour_3"])
+        )
 
     def test_charging_choices_are_exclusive_and_old_settings_migrate(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -587,7 +650,10 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(after[8], (0, 0, 0))
                 self.assertEqual(after[7], white)
                 self.assertEqual(after[14], white)
-                self.assertEqual(after[16], tuple(round(channel * brightness) for channel in values["controller_colour_normal"]))
+                self.assertEqual(after[16], tuple(
+                    round(channel * brightness)
+                    for channel in values["controller_player_colour_2"]
+                ))
 
     def test_duo_moving_points_are_white_and_final_white_tips_remain_visible(self):
         clock = Clock()
@@ -687,17 +753,22 @@ class ControllerTests(unittest.TestCase):
                     brightness = values["controller_gauge_brightness"] / 100
                     blue = tuple(round(channel * brightness) for channel in values["controller_colour_charging"])
                     white = tuple(round(channel * brightness) for channel in (246, 249, 255))
-                    normal = tuple(round(channel * brightness) for channel in values["controller_colour_normal"])
+                    player_colours = [
+                        tuple(round(channel * brightness) for channel in values[key])
+                        for key in ("controller_player_colour_1", "controller_player_colour_2")
+                    ]
                     self.assertEqual(frame[8], (0, 0, 0))
-                    for pixels, is_charging in ((frame[:8], left_charging), (frame[9:], right_charging)):
+                    for player, (pixels, is_charging) in enumerate(
+                        ((frame[:8], left_charging), (frame[9:], right_charging))
+                    ):
                         lit = [pixel for pixel in pixels if pixel != (0, 0, 0)]
                         self.assertTrue(lit)
                         if is_charging:
                             self.assertTrue(all(pixel in (blue, white) for pixel in lit))
                             self.assertIn(blue, lit)
-                            self.assertNotIn(normal, lit)
+                            self.assertNotIn(player_colours[player], lit)
                         else:
-                            self.assertIn(normal, lit)
+                            self.assertIn(player_colours[player], lit)
 
     def test_second_controller_intro_keeps_charging_half_blue(self):
         clock = Clock()
@@ -713,12 +784,13 @@ class ControllerTests(unittest.TestCase):
         brightness = values["controller_gauge_brightness"] / 100
         blue = tuple(round(channel * brightness) for channel in values["controller_colour_charging"])
         white = tuple(round(channel * brightness) for channel in (246, 249, 255))
-        normal = tuple(round(channel * brightness) for channel in values["controller_colour_normal"])
+        player_one = tuple(round(channel * brightness) for channel in values["controller_player_colour_1"])
+        player_two = tuple(round(channel * brightness) for channel in values["controller_player_colour_2"])
         self.assertEqual(frame[8], (0, 0, 0))
-        self.assertIn(normal, frame[:8])
+        self.assertIn(player_one, frame[:8])
         self.assertIn(blue, frame[9:])
         self.assertEqual(frame[14], white)
-        self.assertNotIn(normal, frame[9:])
+        self.assertNotIn(player_two, frame[9:])
 
     def test_full_charge_interrupts_brief_charging_intro_and_restores_base(self):
         clock = Clock()

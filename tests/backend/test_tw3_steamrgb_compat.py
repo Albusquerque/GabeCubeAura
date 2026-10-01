@@ -6,8 +6,10 @@ import unittest
 from pathlib import Path
 
 from signalbar.arbiter import Arbiter
+from signalbar.backend import Engine
 from signalbar.integration import Tw3SteamRgbClaimReader
 from signalbar.models import GameState, ProviderOutput, normalize_frame
+from signalbar.settings import SettingsStore
 
 
 FRAME = normalize_frame([(20, 30, 40)] * 17)
@@ -62,6 +64,33 @@ class CompatibilityTests(unittest.TestCase):
             companion_hud_active=True, steam_priority=True,
         )
         self.assertEqual(decision.provider, "valve")
+
+    def test_compatibility_toggle_ignores_a_live_claim_without_hiding_it(self):
+        class LiveClaim:
+            def active(self): return True
+
+        with tempfile.TemporaryDirectory() as folder:
+            settings = SettingsStore(str(Path(folder) / "settings.json"))
+            engine = Engine(
+                settings, str(Path(folder) / "artwork.json"),
+                tw3_steamrgb_claim=LiveClaim(),
+            )
+            engine.set_game(292030, "The Witcher 3")
+            status = engine.status()
+            self.assertTrue(status["tw3_steamrgb_integration_enabled"])
+            self.assertTrue(status["tw3_steamrgb_detected"])
+            self.assertTrue(status["tw3_steamrgb_active"])
+
+            engine.update_settings({"tw3_steamrgb_integration_enabled": False})
+            status = engine.status()
+            self.assertFalse(status["tw3_steamrgb_integration_enabled"])
+            self.assertTrue(status["tw3_steamrgb_detected"])
+            self.assertFalse(status["tw3_steamrgb_active"])
+
+            engine.set_game(0, "")
+            status = engine.status()
+            self.assertFalse(status["tw3_steamrgb_detected"])
+            self.assertFalse(status["tw3_steamrgb_active"])
 
 
 if __name__ == "__main__":

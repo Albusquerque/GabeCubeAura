@@ -1,110 +1,154 @@
 # Changelog
 
-## 1.2.1-beta.1 - 2026-10-01 - local build only
+## 1.2.1 - 2026-10-02
 
-- Remove The Witcher 3 experimental Lab completely from the plugin, including
-  its Decky page, runtime provider, telemetry bridge, installer, diagnostics,
-  settings, tests and packaged assets.
-- Keep Screen Sync, four-controller layouts, Weather improvements and the
-  update-channel work from 1.2.0-beta.3.
-- Keep this beta local. No GitHub branch, tag, release or release asset has
-  been published for 1.2.1-beta.1.
-- Add local compatibility for the standalone TW3 SteamRGB claim. Permanent
-  GabeCubeAura displays yield during its live Witcher HUD, while Steam system
-  priority, fixed red warnings, GabeCubeAura alerts, previews, launches and
-  countdowns remain above it.
+Stable release. Changes since 1.1.3:
 
-## 1.2.0-beta.3 - 2026-09-30
+### Screen Sync
 
-- Add an experimental The Witcher 3 HUD Lab for Steam AppID `292030`, with live
-  vitality, stamina, toxicity, adrenaline, combat and Sign reactions from the
-  optional WitcherScript bridge.
-- Install, verify, repair or safely remove the bridge from the Witcher page;
-  preserve modified files and report the Steam launch flags and optional
-  script-log fallback status.
-- Require a fresh `GCA1` telemetry record before claiming the physical bar,
-  expire stale data and release the Lab when the game exits or routing changes.
-- Add a focused Witcher and Screen Sync diagnostic export with transport,
-  ownership, path, checksum and recent capture evidence.
-- Improve Screen Sync discovery across Gaming Mode PipeWire sessions and
-  sparse Gamescope metadata, and restart capture when the running AppID changes.
+- Add local real-time Gamescope colour capture with Panorama mapping across 17
+  horizontal zones and a calmer single-colour Ambient mode.
+- Keep captured frames in memory, reject stale frames, reduce bright HUD
+  influence, detect stable cinematic black bars and expose brightness,
+  reactivity, colour-intensity and black-threshold controls.
+- Allow Screen Sync as the default in-game display, as a per-AppID override, as
+  a 15-second preview and as an independent Steam screensaver display.
+- Detect the Steam screensaver through read-only service capabilities and let
+  it replace permanent Home displays without covering Steam system activity,
+  temporary alerts, Game launches or playtime countdowns.
+- Stop Screen Sync during Steam Game Recording or another Gamescope capture,
+  then use the saved Customization+ display as the safe fallback.
+- Preserve the lifetime-confirmed running AppID across transient Steam menu,
+  overlay and resume gaps so the selected game route does not require
+  controller input to return.
+- Close failed or PAUSED GStreamer pipelines before retry, clean only stale
+  clients carrying GabeCubeAura's exact capture marker and isolate each capture
+  in its own process group.
+- Keep the read-only capture warm while Steam temporarily owns the LEDs. When
+  Gamescope or PipeWire actually disappears, close the old capture, wait for
+  the session to settle and rate-limit rediscovery.
+
+### Controllers
+
+- Add fixed battery seats, previews and targeted charging animations for one
+  to four controllers.
+- Mirror two- and four-controller layouts, use three left-to-right zones for
+  three controllers and keep charging effects inside the affected seat.
+- Add an Automatic colour preset that uses battery colours for one controller
+  and distinct P1 to P4 colours from two controllers onward.
+- Retain a Manual preset for choosing Battery level or Player seats at every
+  controller count, with four editable player colours.
+- Extend multiplayer connection patterns to the third and fourth controller
+  without inventing percentages for unknown or coarse battery readings.
+
+### Weather and Customization+
+
+- Add eight night Weather transpositions: two moon scenes, four night-cloud
+  scenes and two moon-through-cloud scenes. Weather now offers 22 selectable
+  loops while keeping existing selections.
+- Route cloudy live Weather to separate day and night families and use a deep
+  blue night field, neutral clouds and stepped moon whites.
+- Expand Customization+ to 65 effects by making the four night-cloud patterns
+  available without renaming existing effects.
+
+### Ownership, recovery and compatibility
+
+- Add hard Steam ownership for startup, downloads, repeated native LED writes
+  and native thermal warnings. GabeCubeAura previews and events do not write
+  through those leases.
+- Claim manual LED mode only for an active GabeCubeAura lease and restore the
+  previous Valve effect and enabled state only while GabeCubeAura still owns
+  the verified frame.
 - Recover after isolated provider, capture or hardware faults instead of
-  leaving a frozen frame.
-- Avoid showing the saved Customization+ fallback during the native game-launch
-  handoff.
-- Correct Valve LED ownership by selecting manual mode only for the active
-  lease and restoring the previous effect and enabled state on release.
-- Preserve Steam downloads, native system activity, critical red thermal
-  warnings, launch effects, alerts and playtime countdowns above the
-  experimental HUD.
-- Make Beta-channel changes check immediately and improve updater transaction
-  recovery and helper isolation from Decky's bundled libraries.
+  leaving a frozen frame on the bar.
+- Avoid displaying the saved Customization+ fallback during the native
+  Game-launch handoff.
+- Add optional compatibility with the standalone TW3 SteamRGB companion. A
+  fresh companion claim can replace the permanent display, while Steam system
+  activity, previews, alerts, Game launches and playtime countdowns retain
+  priority. The Compatibility page can disable this handoff.
+- Keep the experimental Witcher HUD and telemetry mod out of GabeCubeAura. They
+  are distributed separately through TW3 SteamRGB.
 
-## 1.2.0-beta2 - 2026-09-30
+### Diagnostics
 
-- Add fixed battery seats for one to four controllers.
-- Keep automatic mirrored layouts for two and four controllers, with three
-  left-to-right zones for three controllers.
-- Extend Twin reveal, Two signatures and Mirror greeting to every active seat
-  without renaming the existing patterns.
-- Add Battery level and Player seats colour meanings, including editable P1 to
-  P4 colours.
-- Add local one-to-four controller previews and a target selector without
-  modifying Steam's detected roster.
-- Keep Current, Breathing current and Spark charging signals inside the actual
-  or previewed P1, P2, P3 or P4 seat instead of always animating P1.
-- Set the four default Player seats colours to 55 percent Lightness in the
-  colour picker and migrate only the former defaults, without replacing custom
-  colours.
-- Use the multiplayer connection animation when a third or fourth controller
-  joins.
+- Expand runtime diagnostics with Gamescope discovery, PipeWire session,
+  capture identity, selector, frame freshness, ownership and recovery details.
+
+## 1.1.3 - 2026-09-30
+
+This maintenance release makes the latest updater correction available under a
+new version, so existing 1.1.2 installations can receive it normally. It does
+**not** include Screen Sync, the new Weather animations, 4-controller support,
+or any of the other changes currently in the 1.2.0 beta.
+
+- Make **Check now** bypass the stored GitHub ETag and request the complete
+  current release. A manual check can no longer miss a newly published version
+  because GitHub returned `304 Not Modified` for stale local update state.
+- Keep conditional ETag requests for automatic checks, preserving the lighter
+  background polling behaviour.
+- Remove the need to change between Stable and Beta merely to reveal an update.
+  Channel changes continue to trigger an immediate check as intended.
+- Retain the independent helper launch, restart-state recovery, package
+  verification, Stable and Beta channels, selectable intervals and rollback
+  safeguards from 1.1.2.
+- Validate the correction on the Steam Machine with a local 1.1.0 test package:
+  **Check now** detected the public 1.1.2 release directly on Stable without a
+  channel change.
+
+## 1.1.2 - 2026-09-30
+
+This focused recovery release fixes the final launch step of the direct updater.
+It does **not** include Screen Sync, the new Weather animations, 4-controller
+support, or any of the other changes currently in the 1.2.0 beta.
+
+- Remove Decky Loader's bundled library and Python runtime overrides before
+  starting the SteamOS `systemd-run` command.
+- Keep the original helper launch failure detail in the Decky backend log while
+  retaining a short error in the interface.
+- Synchronize the running backend with the terminal transaction state written by
+  the independent helper after Decky restarts.
+- Recover a healthy replacement backend if persisted state remains at
+  `restart_pending`, then allow update checks and channel selection again.
+- Close an older `restart_pending` transaction when a newer manual installation
+  has already replaced its target version.
+- Make `Check now` bypass the stored GitHub ETag so a manual check always reads
+  the current release, while automatic checks retain conditional requests.
+- Add coverage that launches the helper from a deliberately contaminated Decky
+  environment and verifies that system commands receive a clean environment.
+- Require one manual installation of 1.1.2 for versions 1.0.0, 1.1.0 and 1.1.1.
+  Future releases can then use the repaired in-plugin update flow.
+- Validate the corrected launcher on the Steam Machine by updating a local
+  1.1.0 test build to the unmodified public 1.1.1 release.
+
+## 1.1.1 - 2026-09-30
+
+This maintenance release exists to validate GabeCubeAura's direct updater on
+the public stable path before distributing the larger 1.2.0 beta. It is built
+from 1.1.0 and does **not** include Screen Sync, the new Weather animations,
+4-controller support, or any of the other changes currently in the 1.2.0 beta.
+
 - Add automatic update intervals of 15 minutes, 1, 3, 6, 12 or 24 hours.
-- Add Stable and Beta update channels. Stable remains the default. Beta accepts
-  published beta releases and later stable releases with the same checksum,
-  package validation and confirmation flow.
-- Correct Night passing shadow and Night passing shadows so dim-white clouds at
-  RGB 35 move over a continuous night-blue background, instead of moving a
-  night-blue opening through a white cloud field.
-- Keep Steam Families registration alive through late service availability and
-  resume, and preserve legacy Signals only routing during migration.
-- Fix Steam screensaver detection on read-only service builds and let its Screen
-  Sync context replace every permanent Home display without covering temporary
-  alerts or Steam system animations.
+- Add Stable and Beta update channels. Stable remains the default. Beta can
+  offer a newer published prerelease through the same notification, verified
+  download and confirmation flow.
+- Run one automatic update check when Steam loads the plugin, when automatic
+  checks are enabled, without waiting for the periodic deadline.
+- Check immediately when the selected update channel changes.
+- Allow an installed beta to return explicitly to the current stable release,
+  even when that stable version has a lower version number. Keep transactional
+  recovery to the previously working build if the target does not start.
 
-## 1.2.0-beta1 - 2026-09-29
+### Coming very soon on the Beta channel
 
-- Merge the experimental Screen Sync engine into GabeCubeAura while
-  keeping the existing provider, arbiter and renderer pipeline as the only LED
-  writer.
-- Add real-time Panorama and Ambient screen colour mapping through a local
-  Gamescope PipeWire capture. Frames stay in memory and are never sent over the
-  network.
-- Add an independent Screen Sync activation controller for the selected game,
-  Steam's screensaver and a bounded 15-second manual preview.
-- Detect Steam's private screensaver service by capability and degrade safely
-  when the current Steam build does not expose it.
-- Keep a lifetime-confirmed AppID through transient menu, overlay and idle
-  `MainRunningApp` gaps so controller input is no longer required to restore
-  the selected in-game display.
-- Stop Screen Sync for Steam Game Recording and other Gamescope consumers, then
-  use the saved Customization+ effect as the automatic capture fallback.
-- Keep the persistent red centre marker over Customization+ for the complete
-  recording when recording Light Events are enabled.
-- Add Steam hard-priority leases for startup, downloads and repeated native LED
-  activity. GabeCubeAura events and previews do not write during those leases.
-- Renew download ownership while activity continues, delay Game Launches while
-  Steam launch writes settle and expose recovery, session and heartbeat
-  diagnostics.
-- Add 8 night-weather transpositions from the approved mockup: Breathing moon,
-  Lunar bloom, four night-cloud scenes, Moon through clouds and Moon, fading
-  clouds. Weather now offers 22 selectable loops.
-- Route cloudy live weather to separate day and night families while preserving
-  existing daytime selections. Fresh night-cloud settings use Night cross &
-  gather.
-- Expand Customization+ to 65 available effects after adding the four
-  night-cloud patterns, without renaming existing entries.
-- Retain the direct updater introduced in 1.1.0. Stable update checks continue
-  to ignore prereleases, and the beta never offers v1.1.0 as a downgrade.
+- Support for up to four controllers.
+- Responsive real-time Screen Sync inspired by Hue Ambilight.
+- Improved night Weather patterns built around a proper night-blue background.
+- The Witcher 3 Lab, an experimental mod for visualising HUD elements on the
+  light bar in real time.
+
+These features are not included in 1.1.1. This release provides the opt-in Beta
+channel that will make them available for testing before their stable release.
 
 ## 1.1.0 - 2026-09-29
 
@@ -125,7 +169,7 @@
   rejection and rollback rehearsals. The lab is hidden from stable builds and
   never touches the real plugin directory or Decky service.
 - Produce a lean versioned archive, an identical fixed-name recovery archive
-  and `SHA256SUMS` without adding GitHub Actions.
+  and `SHA256SUMS`.
 - Move public repository, issue, image and installation links to
   `Alyenax/GabeCubeAura`.
 
@@ -154,7 +198,7 @@
 - Add three reproducible README animations for Customization+, per-AppID artwork palette extraction, and representative Game Launch patterns. They are generated from the Concept Lab with `npm run media:release` and remain explicitly labelled as browser simulations.
 - Restructure the README draft so Artwork and Game launch animations are separate concepts, with dedicated visual explanations for two- and three-colour palettes, speed, and launch patterns.
 - Add a repository, package, documentation, GitHub Pages, annex-site, compatibility, publication, and rollback roadmap for completing the GabeCubeAura rebrand without breaking SignalBar-era settings or links.
-- Publish the manually verified `GabeCubeAura-v1.0.0.zip` with `SHA256SUMS`. No GitHub Actions workflow is used.
+- Publish the manually verified `GabeCubeAura-v1.0.0.zip` with `SHA256SUMS`.
 
 ## 0.8.0 - LOCAL BETA - 2026-09-27
 

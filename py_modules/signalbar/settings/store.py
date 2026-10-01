@@ -86,6 +86,7 @@ DEFAULTS = {
     "controller_low_variant": "beacon",
     "controller_charging_variant": "breath",
     "controller_duo_variant": "double-welcome",
+    "controller_colour_preset": "automatic",
     "controller_colour_mode": "battery",
     "controller_colour_normal": [0, 180, 45],
     "controller_colour_medium": [230, 110, 0],
@@ -114,6 +115,7 @@ DEFAULTS = {
     "weather_snow_variant": 1,
     "weather_storm_variant": 0,
     "stripmine_integration_enabled": True,
+    "tw3_steamrgb_integration_enabled": True,
     "stripmine_priority_artwork": "stripmine",
     "stripmine_priority_performance": "stripmine",
     "stripmine_priority_weather": "stripmine",
@@ -246,6 +248,21 @@ class SettingsStore:
                             if key not in raw or raw.get(key) == old_default:
                                 self._data[key] = list(DEFAULTS[key])
                         self._data["controller_player_palette_revision"] = 1
+                    if "controller_colour_preset" not in raw:
+                        colour_keys = (
+                            "controller_colour_normal", "controller_colour_medium",
+                            "controller_colour_low", "controller_colour_charging",
+                            "controller_player_colour_1", "controller_player_colour_2",
+                            "controller_player_colour_3", "controller_player_colour_4",
+                        )
+                        customised = any(
+                            self._data.get(key) != DEFAULTS[key] for key in colour_keys
+                        )
+                        self._data["controller_colour_preset"] = (
+                            "manual"
+                            if raw.get("controller_colour_mode") == "players" or customised
+                            else "automatic"
+                        )
                     # v0.7.x stored one display mode plus independent context
                     # switches. Preserve the effective Home/game result once,
                     # then make the new routing fields authoritative.
@@ -290,6 +307,9 @@ class SettingsStore:
 
     def _validate(self):
         self._data["stripmine_integration_enabled"] = bool(self._data["stripmine_integration_enabled"])
+        self._data["tw3_steamrgb_integration_enabled"] = bool(
+            self._data["tw3_steamrgb_integration_enabled"]
+        )
         for key in (
             "stripmine_priority_artwork", "stripmine_priority_performance",
             "stripmine_priority_weather", "stripmine_priority_controller",
@@ -430,6 +450,8 @@ class SettingsStore:
             self._data["controller_battery_display"] = DEFAULTS["controller_battery_display"]
         if self._data.get("controller_colour_mode") not in {"battery", "players"}:
             self._data["controller_colour_mode"] = DEFAULTS["controller_colour_mode"]
+        if self._data.get("controller_colour_preset") not in {"automatic", "manual"}:
+            self._data["controller_colour_preset"] = DEFAULTS["controller_colour_preset"]
         if self._data["weather_display"] not in {"off", "home", "game", "everywhere"}:
             self._data["weather_display"] = DEFAULTS["weather_display"]
         if not isinstance(self._data["weather_topbar_enabled"], bool):
@@ -527,16 +549,6 @@ class SettingsStore:
         self._data["hot_temp_c"] = max(self._data["cool_temp_c"] + 1.0, min(120.0, float(self._data["hot_temp_c"])))
         self._data["guard_cooldown_s"] = max(1.0, min(30.0, float(self._data["guard_cooldown_s"])))
         self._data["guard_stable_s"] = max(0.5, min(10.0, float(self._data["guard_stable_s"])))
-        try:
-            interval = int(self._data["updates_check_interval_minutes"])
-        except (TypeError, ValueError, OverflowError):
-            interval = DEFAULTS["updates_check_interval_minutes"]
-        self._data["updates_check_interval_minutes"] = (
-            interval if interval in {15, 60, 180, 360, 720, 1440}
-            else DEFAULTS["updates_check_interval_minutes"]
-        )
-        if self._data["updates_channel"] not in {"stable", "beta"}:
-            self._data["updates_channel"] = DEFAULTS["updates_channel"]
         raw_profiles = self._data.get("artwork_profiles")
         profiles = {}
         if isinstance(raw_profiles, dict):
@@ -662,6 +674,22 @@ class SettingsStore:
         if "mode" in global_values and global_values["mode"] not in VALID_MODES | {"automatic"}:
             raise ValueError("Invalid configuration setting: mode")
         imported = deepcopy(global_values)
+        if "controller_colour_preset" not in imported:
+            colour_keys = (
+                "controller_colour_normal", "controller_colour_medium",
+                "controller_colour_low", "controller_colour_charging",
+                "controller_player_colour_1", "controller_player_colour_2",
+                "controller_player_colour_3", "controller_player_colour_4",
+            )
+            customised = any(
+                key in imported and imported[key] != DEFAULTS[key]
+                for key in colour_keys
+            )
+            imported["controller_colour_preset"] = (
+                "manual"
+                if imported.get("controller_colour_mode") == "players" or customised
+                else "automatic"
+            )
         if "signalbar_enabled" not in imported:
             imported["signalbar_enabled"] = imported.get("mode") != "disabled"
         if "home_display" not in imported:

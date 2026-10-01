@@ -25,6 +25,23 @@ VARIANTS = {
 DURATIONS = {"connect": 3.2, "low": 3.2, "charging": 2.8, "persistent": 3.0, "duo": 6.0}
 
 
+def effective_controller_colour_mode(values=None, controller_count=1):
+    """Resolve the colour meaning without mutating saved settings."""
+    values = values or {}
+    if values.get("controller_colour_preset", "automatic") == "automatic":
+        return "players" if max(1, int(controller_count)) >= 2 else "battery"
+    mode = values.get("controller_colour_mode", "battery")
+    return mode if mode in {"battery", "players"} else "battery"
+
+
+def _resolved_colour_values(values, controller_count):
+    resolved = dict(values or {})
+    resolved["controller_colour_mode"] = effective_controller_colour_mode(
+        resolved, controller_count
+    )
+    return resolved
+
+
 def _colour(percent, values=None, player=0):
     values = values or {}
     if values.get("controller_colour_mode") == "players":
@@ -261,12 +278,17 @@ def _animate_charging_seat(frame, zone, percent, variant, elapsed, values):
 
 
 def controller_frame(kind, variant, elapsed, percent=74, second_percent=25, *, intro_age=None,
-                     values=None, continuous=False, percents=None, player=0):
+                     values=None, continuous=False, percents=None, player=0,
+                     controller_count=None):
     """Pure renderer. Unknown battery levels never become invented percentages."""
     if kind not in VARIANTS or variant not in VARIANTS[kind]:
         raise ValueError("unknown controller signal variant")
     t = max(0.0, float(elapsed))
-    values = values or {}
+    if controller_count is None:
+        controller_count = len(percents) if kind == "duo" and percents is not None else (
+            2 if kind == "duo" else 1
+        )
+    values = _resolved_colour_values(values, controller_count)
     cyan = tuple(values.get("controller_colour_charging", CYAN))
     red = tuple(values.get("controller_colour_low", RED))
     brightness = values.get("controller_gauge_brightness", 100) / 100.0
@@ -579,6 +601,7 @@ class ControllerProvider:
                 frame = controller_frame(
                     "duo", self._style.get("controller_duo_variant", "twin"), elapsed,
                     intro_age=None, values=self._style, percents=samples,
+                    controller_count=seat_count,
                 )
                 frame = normalize_frame(_animate_charging_seat(
                     frame, controller_zones(seat_count)[player],
@@ -589,6 +612,7 @@ class ControllerProvider:
                     kind, variant, elapsed, _render_percent(item),
                     intro_age=elapsed if kind == "duo" else None,
                     values=self._style, percents=levels, player=player,
+                    controller_count=seat_count,
                 )
             if kind == "duo" and not preview:
                 frame = normalize_frame(_tint_multi_charging(frame, current, self._style))
@@ -609,6 +633,7 @@ class ControllerProvider:
             if not known:
                 return ProviderOutput("controller-battery", None, "battery level unavailable")
             now = self._clock()
+            colour_values = _resolved_colour_values(values, len(current))
             completed = next((item for item in known if 0 <= now - self._charge_completed_at.get(item["id"], -100) < .9), None)
             if charging_allowed and completed is not None:
                 progress = (now - self._charge_completed_at[completed["id"]]) / .9
@@ -625,7 +650,7 @@ class ControllerProvider:
                                                   values=values, player=player))
                     zone = controller_zones(1)[0]
                 spread = min(8, int(progress * 9))
-                cue = _scaled(WHITE if progress < .5 else _colour(100, values, player),
+                cue = _scaled(WHITE if progress < .5 else _colour(100, colour_values, player),
                               values.get("controller_gauge_brightness", 100) / 100.0)
                 centre = (len(zone) - 1) / 2
                 radius = min(len(zone), max(1, round(spread * len(zone) / 9)))

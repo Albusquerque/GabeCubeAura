@@ -1,56 +1,17 @@
 # GabeCubeAura
 
-**GabeCubeAura 1.2.1-beta.1 is a local beta focused on real-time screen colours,
-richer night weather and fixed battery seats for the official Steam Machine's
-17-pixel light bar. The experimental game telemetry Lab is not included.**
+**GabeCubeAura 1.2.1 brings real-time screen colours, richer controller
+support and expanded Weather scenes to the official Steam Machine's 17-pixel
+light bar.**
 
 Make your Steam Machine's 17-pixel light bar useful and a little more
-expressive. This beta combines the complete v1.1.3 feature set with live
-in-game colour, optional Steam screensaver matching and 8 night-weather
-transpositions. Existing GabeCubeAura and SignalBar settings remain compatible.
+expressive. This release combines the complete v1.1.3 feature set with Screen Sync,
+fixed layouts for up to four controllers, eight additional night Weather scenes
+and safer recovery across Steam, Gamescope and Decky session changes.
 
-> **Beta software:** 1.2.1-beta.1 is a local test build. It has not been
-> published on GitHub. Keep a configuration export and the current stable ZIP
-> available for rollback.
-
-[Latest stable v1.1.3](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.3)
-
-## Screen Sync
-
-Screen Sync maps the running game's picture onto the light bar in real time.
-Panorama maps 17 horizontal screen zones to the 17 LEDs. Ambient calculates one
-calmer colour for the whole image. Processing stays on the Steam Machine,
-captured frames remain in memory, and no image is saved or sent over the
-network.
-
-![Screen Sync following the game on the physical Steam Machine light bar](docs/media/animations/screen-sync-steam-machine.gif)
-
-The capture runs when Screen Sync is the effective display for a running game,
-while Steam's screensaver is active and opted in, or during the 15-second
-manual preview. It requests a 34 by 18 pixel Gamescope PipeWire stream at 10
-frames per second, detects stable cinematic black bars, reduces bright HUD
-influence, smooths scene changes and stops using a frame when it becomes stale.
-If recording or another Gamescope capture consumer is detected, the saved
-Customization+ effect takes over without competing for the stream.
-Every game AppID transition also terminates the former GStreamer process and
-starts a fresh Gamescope capture session when Screen Sync is still requested;
-this avoids carrying a stale PipeWire client into the next PAUSED preroll.
-
-Screen Sync has its own settings page for Panorama or Ambient style,
-brightness, reactivity, colour intensity, black threshold and black-bar
-handling. It can be selected as the in-game default, saved per Steam AppID, or
-enabled independently for Steam's screensaver without changing either route.
-
-All existing routing still applies. Choose separate permanent displays for
-Home and games, then let
-temporary launch, playtime, and Steam moments take the stage before the
-selected display returns.
-
-The 1.2.1-beta.1 archive is built and installed locally. It has no public
-download link.
-
-GabeCubeAura is the new name of SignalBar. On first launch it imports existing
-SignalBar settings and artwork caches. Existing users keep their configuration.
+[Download GabeCubeAura 1.2.1](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.1/GabeCubeAura-v1.2.1.zip)
+· [Release notes](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.2.1)
+· [TW3 SteamRGB companion](https://github.com/Alyenax/TW3-SteamRGB)
 
 [Try the interactive GabeCubeAura preview before installing](https://alyenax.github.io/gabecubeaura-concept/)
 
@@ -123,23 +84,64 @@ as if they were live.
 
 ![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](docs/media/animations/performance.gif)
 
+### Screen Sync
+
+Screen Sync maps the running game's picture onto the light bar in real time.
+Panorama maps 17 horizontal screen zones to the 17 LEDs. Ambient calculates one
+calmer colour for the whole image. Processing stays on the Steam Machine,
+captured frames remain in memory, and no image is saved or sent over the
+network.
+
+![Screen Sync following the game on the physical Steam Machine light bar](docs/media/animations/screen-sync-steam-machine.gif)
+
+The capture runs when Screen Sync is the effective display for a running game,
+while Steam's screensaver is active and opted in, or during the 15-second
+manual preview. It requests a 34 by 18 pixel Gamescope PipeWire stream at 10
+frames per second, detects stable cinematic black bars, reduces bright HUD
+influence, smooths scene changes and stops using a frame when it becomes stale.
+If recording or another Gamescope capture consumer is detected, the saved
+Customization+ effect takes over without competing for the stream.
+Every game AppID transition also terminates the former GStreamer process and
+starts a fresh Gamescope capture session when Screen Sync is still requested;
+this avoids carrying a stale PipeWire client into the next PAUSED preroll.
+The read-only capture stays warm while Steam temporarily owns the LEDs. If the
+Gamescope or PipeWire session actually disappears, GabeCubeAura closes the old
+pipeline first, waits for the session to settle and only then rediscovers it.
+
+Screen Sync has its own settings page for Panorama or Ambient style,
+brightness, reactivity, colour intensity, black threshold and black-bar
+handling. It can be selected as the in-game default, saved per Steam AppID, or
+enabled independently for Steam's screensaver without changing either route.
+
+All existing routing still applies. Choose separate permanent displays for
+Home and games, then let temporary launch, playtime and Steam moments take the
+stage before the selected display returns.
+
 ### Display routing and temporary layers
 
 Choose one permanent display for Home and another for games: GabeCubeAura Off,
-Customization+, Artwork (games only), Performance, Weather, or Controllers. A per-game override
+Customization+, Artwork (games only), Performance, Screen Sync (games only),
+Weather, or Controllers. A per-game override
 can replace the in-game default. Game launches, Playtime, Light events, and
 Controller alerts are separate temporary layers, so they work without forcing
 a particular permanent display. Choosing GabeCubeAura Off reproduces the former
 Signals-only behaviour: GabeCubeAura yields the bar between temporary signals.
 
 StripMine is developed by the same author as GabeCubeAura. With StripMine
-v0.1.1-alpha.7 or newer, open **Settings → Compatibility** to
+v0.1.1-alpha.7 or newer, open **Settings > Compatibility** to
 choose which plugin owns the bar for Artwork, Performance, Weather, Controller
 displays, Game launches, and Light Events while the mine is active. GabeCubeAura
 and StripMine acknowledge every transfer before writing, then restore the
 previous owner automatically. No manual **Retry bar** action is required.
 Playtime countdowns remain GabeCubeAura priorities; unknown applications still
 trigger the normal ownership guard.
+
+[TW3 SteamRGB](https://github.com/Alyenax/TW3-SteamRGB) can use the bar as a
+live The Witcher 3 HUD. While its fresh ownership claim is active,
+GabeCubeAura yields only its permanent display. Steam system activity,
+GabeCubeAura previews, alerts, Game launches and playtime countdowns remain
+above the game HUD. The former experimental Witcher Lab is not bundled with
+GabeCubeAura 1.2.1.
 
 ### Playtime Countdown
 
@@ -158,11 +160,14 @@ controllers use mirrored layouts. Three controllers use three left-to-right
 zones. Dark separators and white charge tips keep every seat readable.
 
 Charging can play a short cue or a continuous blue-and-white animation that
-stops at 100%. Choose battery-level colours or fixed P1 to P4 seat colours,
-animation styles, brightness and alert contexts. This Concept Lab capture
-shows all four fixed seats, Player colours and a targeted charging cue.
+stops at 100%. The Automatic colour preset uses battery colours with one
+controller, then distinct P1 to P4 seat colours from two controllers onward.
+Manual keeps either colour meaning at every controller count. Choose animation
+styles, brightness and alert contexts. This Concept Lab capture shows the
+single-controller battery view, then two mirrored gauges and continuous
+charging.
 
-![Four-controller mirrored seats, player colours and a targeted charging animation](docs/media/animations/controllers-four-player.gif)
+![One-controller battery view followed by two mirrored controller gauges and continuous charging](docs/media/animations/controller-battery.gif)
 
 Battery and charging data depend on the controller. Unknown levels are never
 invented; see the [controller test notes](docs/CONTROLLERS_RESEARCH.md).
@@ -171,7 +176,7 @@ invented; see the [controller test notes](docs/CONTROLLERS_RESEARCH.md).
 
 Choose a city, then select Weather as the permanent Home or In-game display.
 Twenty-two selectable loops cover clear skies, rain, cloud, partly cloudy day
-and night, snow, and storms. This beta adds 8 night transpositions: two moon
+and night, snow, and storms. Version 1.2.1 adds 8 night transpositions: two moon
 scenes, four night-cloud scenes and two moon-through-cloud scenes. They keep
 the approved daytime choreography while using a deep blue night field, neutral
 clouds and stepped moon whites. **Snow takes hold** is the default snow scene;
@@ -266,15 +271,15 @@ The Stable channel is the default and ignores GitHub prereleases. The optional
 Beta channel accepts published beta releases as well as later stable releases.
 Both use the same verification and confirmation flow. Changing the selector to
 **Beta** starts a fresh release check immediately for published prereleases.
-This local 1.2.1-beta.1 build will not appear there. Returning to Stable explicitly
-offers the current stable package even when its version number is lower than an
-installed beta.
+Returning to Stable explicitly offers the current stable package even when its
+version number is lower than an installed beta.
 
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Build `out/GabeCubeAura-v1.2.1-beta.1.zip` locally. Do not extract it. The
-   latest public stable release remains v1.1.3.
+2. Download `GabeCubeAura-v1.2.1.zip` from the
+   [v1.2.1 release](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.2.1).
+   Do not extract it.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
 4. Open **Decky > Settings > Developer**. Under **Third-Party Plugins**, choose
@@ -294,8 +299,9 @@ light bar through root-owned `valve-leds` sysfs files.
 
 1. Open GabeCubeAura in Decky's quick-access menu.
 2. Choose a **Home display** and an **In-game display** under Display routing.
-3. Open **Detailed settings** for Artwork, Performance, Weather, Game launches,
-   Playtime, Light events, Controllers, Compatibility, and Advanced options.
+3. Open **Detailed settings** for Artwork, Performance, Screen Sync,
+   Weather, Game launches, Playtime, Light events, Controllers, Compatibility,
+   and Advanced options.
 4. Use Preview to compare animations before changing your live settings.
 
 Live Light events are enabled on a fresh installation. Controller alerts have
@@ -349,7 +355,10 @@ clears the old parental countdown immediately.
 - Three selectable styles for each signal, including the multiplayer view
 - Fixed layouts for one to four controllers, with automatic mirroring for two
   and four and left-to-right seats for three
-- Battery-level colours or four editable player-seat colours
+- Automatic colour preset: battery colours for one controller, then four
+  editable player-seat colours from two controllers onward
+- Manual colour preset: keep either Battery level or Player seats at every
+  controller count
 - Local previews can simulate one to four controllers without changing the
   detected Steam controller roster
 
@@ -419,8 +428,8 @@ own last verified write.
 - Controller battery reporting relies on the private SteamInputManager service
   and varies by controller. There is no verified compatibility list for every
   controller and connection type yet.
-- No Internet artwork fallback, audio visualizer, FPS, network, storage,
-  Moonlight, or Sunshine provider yet
+- No Internet artwork fallback, FPS, network, storage, Moonlight, or Sunshine
+  provider yet
 
 ## Build and test
 
@@ -432,18 +441,12 @@ corepack pnpm build
 corepack pnpm package
 ```
 
-The installable archives are written to `out/GabeCubeAura-v1.2.1-beta.1.zip` and
+The installable archives are written to `out/GabeCubeAura-v1.2.1.zip` and
 `out/GabeCubeAura.zip`. Their identical SHA256 values are written to
 `out/SHA256SUMS`.
 
-See [the GabeCubeAura 1.2.1-beta.1 release notes](docs/RELEASE_NOTES_1.2.1-beta.1.md)
-for the complete beta scope and known limits.
-
 See [the Screen Sync implementation notes](docs/SCREEN_SYNC.md)
 for the implementation status, safety model and physical test checklist.
-
-See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.1-beta.1.md) before using
-the build as a daily driver.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
 hardware-rendering details. Release history is available in

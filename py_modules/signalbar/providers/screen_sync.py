@@ -11,6 +11,7 @@ import json
 import os
 import pwd
 import select
+import signal
 import shutil
 import subprocess
 import threading
@@ -24,7 +25,9 @@ CAPTURE_WIDTH = 34
 CAPTURE_HEIGHT = 18
 BYTES_PER_PIXEL = 4
 FRAME_BYTES = CAPTURE_WIDTH * CAPTURE_HEIGHT * BYTES_PER_PIXEL
-CAPTURE_REVISION = "beta.3-session-launch-v3"
+CAPTURE_REVISION = "1.2.1-session-release-v7"
+CAPTURE_PROCESS_MARKER = "client-name=GabeCubeAura-Screen-Sync"
+SESSION_RESTART_SETTLE_SECONDS = 2.0
 
 VALID_STYLES = {"panorama", "ambient"}
 VALID_REACTIVITY = {"calm", "balanced", "fast"}
@@ -239,6 +242,9 @@ class ScreenCaptureService:
         self._stderr = deque(maxlen=12)
         self._frames_seen = 0
         self._started_at = 0.0
+        self._orphan_processes_cleaned = 0
+        self._capture_sessions_released = 0
+        self._last_release_error = ""
 
     @staticmethod
     def _runtime_dirs():
@@ -456,7 +462,7 @@ class ScreenCaptureService:
         )
         source = [
             gst, "-q", "pipewiresrc", selector, "do-timestamp=true",
-            "client-name=GabeCubeAura-Screen-Sync",
+            CAPTURE_PROCESS_MARKER,
         ]
         if selector_mode == "target-object":
             # Current PipeWire keeps a variable-rate Gamescope source alive
@@ -470,6 +476,123 @@ class ScreenCaptureService:
             "!", "video/x-raw,format=BGRx,width=34,height=18,framerate=10/1",
             "!", "fdsink", "fd=1", "sync=false",
         ]
+
+    @staticmethod
+    def _marked_capture_pids(proc_root="/proc"):
+        """Find only stale GStreamer clients carrying GabeCubeAura's marker.
+
+        This deliberately avoids process names and broad pkill matching. The
+        marker is part of the exact pipeline command created above, so other
+        Gamescope recorders and GStreamer applications are never selected.
+        """
+        found = []
+        try:
+            entries = os.listdir(proc_root)
+        except OSError:
+            return found
+        for entry in entries:
+            if not entry.isdigit() or int(entry) == os.getpid():
+                continue
+            try:
+                with open(os.path.join(proc_root, entry, "cmdline"), "rb") as handle:
+                    raw = handle.read(65536)
+            except OSError:
+                continue
+            arguments = [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+            if not arguments:
+                continue
+            has_gstreamer = any(os.path.basename(argument) == "gst-launch-1.0" for argument in arguments)
+            if has_gstreamer and CAPTURE_PROCESS_MARKER in arguments:
+                found.append(int(entry))
+        return found
+
+    def _cleanup_orphan_captures(self):
+        """Release GabeCubeAura pipelines left by a replaced backend.
+
+        Decky can replace the plugin while switching between Desktop and
+        Gaming Mode without giving the old backend enough time to reap its
+        child. Such a client keeps the old PipeWire graph busy until reboot.
+        """
+        current = None
+        with self._lock:
+            if self._process is not None:
+                current = getattr(self._process, "pid", None)
+        cleaned = 0
+        targets = set(self._marked_capture_pids())
+        for pid in targets:
+            if pid == current:
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+                cleaned += 1
+            except (ProcessLookupError, PermissionError):
+                continue
+        if cleaned:
+            with self._lock:
+                self._orphan_processes_cleaned += cleaned
+                self._discovery_detail = (
+                    f"Released {cleaned} stale GabeCubeAura capture process"
+                    f"{'es' if cleaned != 1 else ''} after plugin replacement"
+                )
+            self._wait(0.50)
+            # A pipeline stuck in PAUSED can ignore a graceful request. Check
+            # the exact marker again before escalating, so PID reuse or an
+            # unrelated GStreamer process can never be killed accidentally.
+            remaining = set(self._marked_capture_pids())
+            for pid in targets & remaining:
+                if pid == current:
+                    continue
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    continue
+        return cleaned
+
+    @staticmethod
+    def _terminate_process(process):
+        """Stop the complete capture group, falling back for test/old clients."""
+        if process is None or process.poll() is not None:
+            return
+        pid = getattr(process, "pid", None)
+        try:
+            if pid is None:
+                raise OSError("process has no pid")
+            os.killpg(pid, signal.SIGTERM)
+        except OSError:
+            process.terminate()
+        try:
+            process.wait(timeout=1.0)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            if pid is None:
+                raise OSError("process has no pid")
+            os.killpg(pid, signal.SIGKILL)
+        except OSError:
+            process.kill()
+        process.wait(timeout=1.0)
+
+    def _release_failed_capture(self, process, error):
+        """Close a failed client before waiting or selecting another source.
+
+        GStreamer can remain alive while its pipeline is stuck in PAUSED. It
+        must be reaped before the retry delay, otherwise its PipeWire link can
+        keep the Gamescope node busy while the next selector is prepared.
+        """
+        if process is None:
+            return False
+        self._terminate_process(process)
+        with self._lock:
+            if self._process is process:
+                self._process = None
+            self._frame = None
+            self._frame_at = 0.0
+            self._frames_seen = 0
+            self._started_at = 0.0
+            self._capture_sessions_released += 1
+            self._last_release_error = str(error)[:300]
+        return True
 
     def set_active(self, active):
         active = bool(active)
@@ -503,8 +626,7 @@ class ScreenCaptureService:
         self._wake.set()
         with self._lock:
             process = self._process
-        if process is not None and process.poll() is None:
-            process.terminate()
+        self._terminate_process(process)
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout=3.5)
@@ -537,6 +659,9 @@ class ScreenCaptureService:
                 "conflicting_consumers": self._conflicting_consumers,
                 "frame_age_s": age,
                 "frames_per_second": self._frames_seen / elapsed if elapsed else 0.0,
+                "orphan_processes_cleaned": self._orphan_processes_cleaned,
+                "capture_sessions_released": self._capture_sessions_released,
+                "last_release_error": self._last_release_error,
             }
 
     def _set_state(self, phase, error="", consumers=0):
@@ -551,26 +676,38 @@ class ScreenCaptureService:
 
     def _supervise(self):
         backoff = 0.5
+        cleanup_armed = True
         while not self._stop.is_set():
             with self._lock:
                 active = self._active
             if not active:
+                cleanup_armed = True
                 self._wait(0.25)
                 continue
             process = None
             captured_frame = False
             selector_mode = self._selector_mode
+            # Discovery can fail while Gaming Mode is being suspended or while
+            # Steam switches between the desktop and Gamescope sessions. Keep
+            # the retry path valid even when no node was returned this cycle.
+            node_id = None
             try:
                 gst = shutil.which("gst-launch-1.0")
                 if not gst:
                     raise RuntimeError("GStreamer is not installed")
+                if cleanup_armed:
+                    self._cleanup_orphan_captures()
+                    cleanup_armed = False
                 runtime_dir, node, dump = self._discover_gamescope_node()
                 if node is None:
                     node_id, node_name = None, "gamescope (direct name)"
                 else:
                     node_id, node_name = node
                 if selector_mode == "path" and node_id is None:
-                    selector_mode = "target-object-compat"
+                    # The numeric node belonged to an older PipeWire graph.
+                    # Restart the complete selector sequence for the current
+                    # session instead of retaining a stale fallback mode.
+                    selector_mode = "target-object"
                     with self._lock:
                         self._selector_mode = selector_mode
                 consumers = self.count_consumers(dump, node_id) if node_id is not None else 0
@@ -597,6 +734,7 @@ class ScreenCaptureService:
                 process = self._popen(
                     command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     stdin=subprocess.DEVNULL, env=environment, bufsize=0,
+                    start_new_session=True,
                 )
                 with self._lock:
                     self._process = process
@@ -656,7 +794,26 @@ class ScreenCaptureService:
                     detail = self._stderr[-1] if self._stderr else "GStreamer capture stopped"
                     raise RuntimeError(detail)
             except Exception as error:
-                if selector_mode == "target-object" and process is not None and not captured_frame:
+                failed_before_frame = process is not None and not captured_frame
+                if process is not None:
+                    # Release our PipeWire client first. Waiting before this
+                    # point leaves a PAUSED pipeline attached to Gamescope and
+                    # can make every following selector fail in the same way.
+                    self._release_failed_capture(process, error)
+                    process = None
+                if captured_frame:
+                    # A previously healthy source disappearing means the
+                    # Gamescope/PipeWire session is being rebuilt. Do not run
+                    # the selector fallback ladder during that transition.
+                    self._selector_mode = "target-object"
+                    self._set_state(
+                        "waiting",
+                        "Gamescope session changed; capture closed before rediscovery",
+                    )
+                    self._wait(max(SESSION_RESTART_SETTLE_SECONDS, backoff))
+                    backoff = min(5.0, max(1.0, backoff * 2.0))
+                    continue
+                if selector_mode == "target-object" and failed_before_frame:
                     self._selector_mode = "target-object-compat"
                     self._set_state(
                         "error",
@@ -666,7 +823,7 @@ class ScreenCaptureService:
                     self._wait(backoff)
                     continue
                 if (selector_mode == "target-object-compat" and node_id is not None
-                        and process is not None and not captured_frame):
+                        and failed_before_frame):
                     self._selector_mode = "path"
                     self._set_state(
                         "error",
@@ -675,6 +832,24 @@ class ScreenCaptureService:
                     backoff = 0.1
                     self._wait(backoff)
                     continue
+                if (selector_mode in {"target-object-compat", "path"}
+                        and failed_before_frame):
+                    # No selector is permanent across a PipeWire/Gamescope
+                    # restart. After exhausting the available fallbacks, begin
+                    # a fresh sequence so a newly created session can recover.
+                    self._selector_mode = "target-object"
+                    self._set_state(
+                        "waiting",
+                        f"Gamescope unavailable; capture closed before rediscovery: {error}",
+                    )
+                    self._wait(max(SESSION_RESTART_SETTLE_SECONDS, backoff))
+                    backoff = min(5.0, max(1.0, backoff * 2.0))
+                    continue
+                if process is None:
+                    # Discovery can fail while the runtime socket is replaced.
+                    # Do not carry a selector chosen for the old graph into the
+                    # next Gaming Mode session.
+                    self._selector_mode = "target-object"
                 with self._lock:
                     conflict = self._phase == "conflict"
                 if not conflict:
@@ -682,13 +857,7 @@ class ScreenCaptureService:
                 self._wait(backoff)
                 backoff = min(5.0, backoff * 2.0)
             finally:
-                if process is not None and process.poll() is None:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=1.0)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait(timeout=1.0)
+                self._terminate_process(process)
                 with self._lock:
                     if self._process is process:
                         self._process = None

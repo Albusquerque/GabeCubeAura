@@ -468,11 +468,13 @@ class PersistenceTests(unittest.TestCase):
                 "controller_low_enabled": True, "controller_connect_variant": "welcome",
                 "controller_persistent_variant": "tip", "controller_low_variant": "beacon",
                 "controller_charging_variant": "breath", "controller_duo_variant": "double-welcome",
+                "controller_colour_preset": "automatic",
                 "controller_colour_mode": "battery", "controller_gauge_brightness": 65,
                 "reverse_led_order": True, "countdown_dark_edge_compensation": 2,
                 "weather_topbar_enabled": False, "weather_temperature_unit": "celsius",
                 "weather_brightness": 100, "weather_shadow_cutoff": 0,
                 "weather_cloud_variant": 3, "weather_snow_variant": 1,
+                "tw3_steamrgb_integration_enabled": True,
             }
             for key, value in expected.items():
                 self.assertEqual(store.all()[key], value, key)

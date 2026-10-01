@@ -11,6 +11,7 @@ class PackagingTests(unittest.TestCase):
             "docs/SCREEN_SYNC.md", "docs/SCREEN_SYNC_INTEGRATION_PLAN.md",
             "docs/BETA_TEST_PLAN_1.2.1-beta.1.md",
             "docs/RELEASE_NOTES_1.2.1-beta.1.md",
+            "docs/RELEASE_NOTES_1.2.1.md",
         ):
             self.assertTrue((root / relative).is_file(), relative)
         self.assertTrue((root / "py_modules/signalbar/backend/engine.py").is_file())
@@ -31,10 +32,12 @@ class PackagingTests(unittest.TestCase):
         manifest = (root / "plugin.json").read_text(encoding="utf-8")
         package = (root / "package.json").read_text(encoding="utf-8")
         self.assertIn('"name": "GabeCubeAura"', manifest)
-        self.assertIn('"version": "1.2.1-beta.1"', package)
+        self.assertIn('"version": "1.2.1"', package)
         self.assertIn('"author": "Alyenax"', manifest)
         self.assertIn('"author": "Alyenax"', package)
         self.assertIn('label="Colour meaning"', panel)
+        self.assertIn('label="Colour preset"', panel)
+        self.assertIn('label="Yield to TW3-SteamRGB HUD"', panel)
         self.assertIn('label="Controllers in preview"', panel)
         self.assertIn('label="Preview controller"', panel)
         self.assertNotIn('label="Seat direction"', panel)

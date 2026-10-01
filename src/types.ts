@@ -138,6 +138,7 @@ export interface Status {
   controller_low_variant: string;
   controller_charging_variant: string;
   controller_duo_variant: string;
+  controller_colour_preset: "automatic" | "manual";
   controller_colour_mode: "battery" | "players";
   controller_colour_normal: RGB;
   controller_colour_medium: RGB;
@@ -156,6 +157,9 @@ export interface Status {
   weather_shadow_cutoff: number;
   stripmine_integration_enabled: boolean;
   stripmine_detected: boolean;
+  tw3_steamrgb_integration_enabled: boolean;
+  tw3_steamrgb_detected: boolean;
+  tw3_steamrgb_active: boolean;
   stripmine_priority_artwork: CompanionPriority;
   stripmine_priority_performance: CompanionPriority;
   stripmine_priority_weather: CompanionPriority;
@@ -236,7 +240,7 @@ export interface Status {
   screen_sync: {
     revision: string;
     active: boolean;
-    phase: "off" | "capturing" | "conflict" | "error";
+    phase: "off" | "waiting" | "capturing" | "conflict" | "error";
     error: string;
     node_id: number | null;
     node_name: string;
@@ -248,6 +252,9 @@ export interface Status {
     conflicting_consumers: number;
     frame_age_s: number | null;
     frames_per_second: number;
+    orphan_processes_cleaned: number;
+    capture_sessions_released: number;
+    last_release_error: string;
     crop_top: number;
     crop_bottom: number;
     colors: RGB[];

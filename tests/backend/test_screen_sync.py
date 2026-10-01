@@ -10,8 +10,10 @@ from signalbar.arbiter import Arbiter
 from signalbar.arbiter.guard import ManualClock
 from signalbar.models import GameState, ProviderOutput, normalize_frame
 from signalbar.providers.screen_sync import (
+    CAPTURE_PROCESS_MARKER,
     CAPTURE_HEIGHT,
     CAPTURE_WIDTH,
+    SESSION_RESTART_SETTLE_SECONDS,
     ScreenCaptureService,
     ScreenSyncProcessor,
     ScreenSyncProvider,
@@ -115,6 +117,272 @@ class ScreenSyncProcessorTests(unittest.TestCase):
 
 
 class ScreenCaptureDiscoveryTests(unittest.TestCase):
+    def test_orphan_scan_matches_only_exact_gabecubeaura_gstreamer_pipeline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            commands = {
+                "101": ["/usr/bin/gst-launch-1.0", "pipewiresrc", CAPTURE_PROCESS_MARKER],
+                "102": ["/usr/bin/gst-launch-1.0", "pipewiresrc", "client-name=Other-App"],
+                "103": ["/usr/bin/python3", CAPTURE_PROCESS_MARKER],
+            }
+            for pid, command in commands.items():
+                process = root / pid
+                process.mkdir()
+                (process / "cmdline").write_bytes(b"\0".join(item.encode() for item in command) + b"\0")
+            self.assertEqual(sorted(ScreenCaptureService._marked_capture_pids(str(root))), [101])
+
+    def test_orphan_cleanup_terminates_only_marked_capture(self):
+        service = ScreenCaptureService()
+        with patch.object(service, "_marked_capture_pids", side_effect=[[101, 102], []]), \
+                patch("signalbar.providers.screen_sync.os.kill") as kill, \
+                patch.object(service, "_wait"):
+            self.assertEqual(service._cleanup_orphan_captures(), 2)
+        self.assertEqual(
+            [call.args for call in kill.call_args_list],
+            [(101, 15), (102, 15)],
+        )
+        self.assertEqual(service.status()["orphan_processes_cleaned"], 2)
+
+    def test_capture_process_starts_in_a_dedicated_session(self):
+        commands = []
+
+        class ExitedProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.stderr = tempfile.TemporaryFile()
+
+            def poll(self):
+                return 1
+
+        process = ExitedProcess()
+
+        def popen(command, **kwargs):
+            commands.append((command, kwargs))
+            return process
+
+        service = ScreenCaptureService(popen=popen)
+        service._active = True
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_cleanup_orphan_captures", return_value=0), \
+                patch.object(service, "_discover_gamescope_node",
+                             return_value=("/run/user/1000", (91, "gamescope"), [])), \
+                patch.object(service, "_command_for_runtime",
+                             side_effect=lambda command, _runtime: (command, "deck (uid 1000)")), \
+                patch.object(service, "_wait", side_effect=lambda _seconds: service._stop.set()):
+            service._supervise()
+        process.stdout.close()
+        process.stderr.close()
+        self.assertTrue(commands[0][1]["start_new_session"])
+
+    def test_failed_capture_is_released_before_retry_wait(self):
+        events = []
+
+        class FailedProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.stderr = tempfile.TemporaryFile()
+
+            def poll(self):
+                return 1
+
+        process = FailedProcess()
+        service = ScreenCaptureService(popen=lambda *_args, **_kwargs: process)
+        service._active = True
+
+        def terminate(target):
+            if target is None:
+                return
+            self.assertIs(target, process)
+            events.append("release")
+
+        def stop_after_wait(_seconds):
+            events.append("wait")
+            service._stop.set()
+
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_cleanup_orphan_captures", return_value=0), \
+                patch.object(service, "_discover_gamescope_node",
+                             return_value=("/run/user/1000", (91, "gamescope"), [])), \
+                patch.object(service, "_command_for_runtime",
+                             side_effect=lambda command, _runtime: (command, "deck (uid 1000)")), \
+                patch.object(service, "_terminate_process", side_effect=terminate), \
+                patch.object(service, "_wait", side_effect=stop_after_wait):
+            service._supervise()
+
+        process.stdout.close()
+        process.stderr.close()
+        self.assertEqual(events, ["release", "wait"])
+        status = service.status()
+        self.assertEqual(status["capture_sessions_released"], 1)
+        self.assertTrue(status["last_release_error"])
+
+    def test_established_capture_loss_waits_for_session_to_settle(self):
+        class RunningProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.stderr = tempfile.TemporaryFile()
+                self.stdout.write(bytes(CAPTURE_WIDTH * CAPTURE_HEIGHT * 4))
+                self.stdout.seek(0)
+
+            def poll(self):
+                return None
+
+        ticks = [0.0]
+
+        def clock():
+            ticks[0] += 0.4
+            return ticks[0]
+
+        process = RunningProcess()
+        service = ScreenCaptureService(clock=clock, popen=lambda *_args, **_kwargs: process)
+        service._active = True
+        waits = []
+
+        def stop_after_wait(seconds):
+            waits.append(seconds)
+            service._stop.set()
+
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_cleanup_orphan_captures", return_value=0), \
+                patch.object(service, "_discover_gamescope_node",
+                             return_value=("/run/user/1000", (91, "gamescope"), [])), \
+                patch.object(service, "_command_for_runtime",
+                             side_effect=lambda command, _runtime: (command, "deck (uid 1000)")), \
+                patch.object(service, "_terminate_process"), \
+                patch.object(service, "_wait", side_effect=stop_after_wait):
+            service._supervise()
+
+        process.stdout.close()
+        process.stderr.close()
+        self.assertTrue(waits)
+        self.assertGreaterEqual(waits[-1], SESSION_RESTART_SETTLE_SECONDS)
+        self.assertEqual(service.status()["phase"], "waiting")
+        self.assertEqual(service._selector_mode, "target-object")
+        self.assertEqual(service.status()["capture_sessions_released"], 1)
+
+    def test_compatibility_retry_survives_pipewire_disappearing_during_session_change(self):
+        service = ScreenCaptureService()
+        service._active = True
+        service._selector_mode = "target-object-compat"
+
+        def stop_after_error(_seconds):
+            service._stop.set()
+
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_discover_gamescope_node",
+                             side_effect=RuntimeError("PipeWire session was not found")), \
+                patch.object(service, "_wait", side_effect=stop_after_error):
+            service._supervise()
+
+        self.assertEqual(service.status()["phase"], "error")
+        self.assertEqual(service.status()["error"], "PipeWire session was not found")
+        self.assertEqual(service._selector_mode, "target-object")
+
+    def test_failed_named_selectors_reach_numeric_node_fallback(self):
+        commands = []
+        processes = []
+
+        class ExitedProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.stderr = tempfile.TemporaryFile()
+
+            def poll(self):
+                return 1
+
+        def popen(command, **_kwargs):
+            commands.append(command)
+            process = ExitedProcess()
+            processes.append(process)
+            return process
+
+        service = ScreenCaptureService(popen=popen)
+        service._active = True
+        waits = []
+
+        def stop_after_all_selectors(seconds):
+            waits.append(seconds)
+            if len(waits) == 3:
+                service._stop.set()
+
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_cleanup_orphan_captures", return_value=0) as cleanup, \
+                patch.object(service, "_discover_gamescope_node",
+                             return_value=("/run/user/1000", (91, "gamescope"), [])), \
+                patch.object(service, "_command_for_runtime",
+                             side_effect=lambda command, _runtime: (command, "deck (uid 1000)")), \
+                patch.object(service, "_wait", side_effect=stop_after_all_selectors):
+            service._supervise()
+
+        for process in processes:
+            process.stdout.close()
+            process.stderr.close()
+
+        self.assertEqual(len(commands), 3)
+        self.assertIn("target-object=gamescope", commands[0])
+        self.assertIn("keepalive-time=33", commands[0])
+        self.assertIn("target-object=gamescope", commands[1])
+        self.assertNotIn("keepalive-time=33", commands[1])
+        self.assertIn("path=91", commands[2])
+        self.assertEqual(service.status()["capture_selector"], "legacy node 91")
+        self.assertEqual(cleanup.call_count, 1)
+        self.assertEqual(waits[:2], [0.1, 0.1])
+        self.assertGreaterEqual(waits[2], SESSION_RESTART_SETTLE_SECONDS)
+
+    def test_stale_numeric_selector_restarts_full_sequence_without_a_node(self):
+        commands = []
+        processes = []
+
+        class ExitedProcess:
+            def __init__(self):
+                self.stdout = tempfile.TemporaryFile()
+                self.stderr = tempfile.TemporaryFile()
+
+            def poll(self):
+                return 1
+
+        def popen(command, **_kwargs):
+            commands.append(command)
+            process = ExitedProcess()
+            processes.append(process)
+            return process
+
+        service = ScreenCaptureService(popen=popen)
+        service._active = True
+        service._selector_mode = "path"
+        waits = 0
+
+        def stop_after_named_sequence(_seconds):
+            nonlocal waits
+            waits += 1
+            if waits == 2:
+                service._stop.set()
+
+        with patch("signalbar.providers.screen_sync.shutil.which",
+                   return_value="/usr/bin/gst-launch-1.0"), \
+                patch.object(service, "_discover_gamescope_node",
+                             return_value=("/run/user/1000", None, [])), \
+                patch.object(service, "_command_for_runtime",
+                             side_effect=lambda command, _runtime: (command, "deck (uid 1000)")), \
+                patch.object(service, "_wait", side_effect=stop_after_named_sequence):
+            service._supervise()
+
+        for process in processes:
+            process.stdout.close()
+            process.stderr.close()
+
+        self.assertEqual(len(commands), 2)
+        self.assertIn("target-object=gamescope", commands[0])
+        self.assertIn("keepalive-time=33", commands[0])
+        self.assertIn("target-object=gamescope", commands[1])
+        self.assertNotIn("keepalive-time=33", commands[1])
+        self.assertEqual(service._selector_mode, "target-object")
+
     def test_logically_active_capture_restarts_after_old_supervisor_exits(self):
         class FakeThread:
             instances = []
@@ -272,17 +540,17 @@ class ScreenSyncProviderTests(unittest.TestCase):
         self.assertFalse(should_fallback(True, True, BLACK, False))
         self.assertFalse(should_fallback(False, True, None, False))
 
-    def test_engine_capture_policy_stops_for_exit_guard_critical_and_stripmine(self):
+    def test_engine_keeps_read_only_capture_warm_during_led_priority(self):
         values = {"signalbar_enabled": True, "stripmine_priority_screen_sync": "signalbar"}
         should_run = Engine._screen_sync_should_run
         self.assertTrue(should_run(values, True, False, True, False))
         self.assertFalse(should_run(values, False, False, True, False))
-        self.assertFalse(should_run(values, True, True, True, False))
-        self.assertFalse(should_run(values, True, False, False, False))
-        self.assertFalse(should_run(values, True, False, True, False, recording=True))
-        self.assertFalse(should_run(
-            values, True, False, False, True, steam_priority=True,
+        self.assertTrue(should_run(values, True, True, True, False))
+        self.assertTrue(should_run(values, True, False, False, False))
+        self.assertTrue(should_run(
+            values, True, False, False, False, steam_priority=True,
         ))
+        self.assertFalse(should_run(values, True, False, True, False, recording=True))
         self.assertTrue(should_run(values, True, False, False, True))
         values["stripmine_priority_screen_sync"] = "stripmine"
         self.assertFalse(should_run(values, True, False, True, True))

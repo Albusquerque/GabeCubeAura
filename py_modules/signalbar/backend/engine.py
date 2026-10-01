@@ -571,17 +571,27 @@ class Engine:
             return "signalbar"
         return values.get(f"stripmine_priority_{family}", "stripmine")
 
+    def _tw3_steamrgb_state(self, values, game):
+        detected = bool(
+            game.appid == 292030 and self.tw3_steamrgb_claim.active()
+        )
+        return detected, bool(
+            values["tw3_steamrgb_integration_enabled"] and detected
+        )
+
     @staticmethod
     def _screen_sync_should_run(values, requested, signal_critical,
                                 guard_allows, stripmine_active, recording=False,
                                 steam_priority=False):
+        # Gamescope capture is read-only and must not follow short-lived LED
+        # ownership changes. Stopping it for every Valve write, countdown or
+        # screensaver handoff repeatedly rebuilds the PipeWire graph precisely
+        # while Gamescope and the game are resuming. The arbiter still prevents
+        # any LED write while Steam or a protected signal owns the bar.
         return (
             values["signalbar_enabled"]
             and requested
-            and not signal_critical
             and not recording
-            and not steam_priority
-            and (guard_allows or stripmine_active)
             and (
                 not stripmine_active
                 or values["stripmine_priority_screen_sync"] == "signalbar"
@@ -708,9 +718,7 @@ class Engine:
                     values["stripmine_integration_enabled"]
                     and self.stripmine_claim.active()
                 )
-                tw3_steamrgb_active = bool(
-                    game.appid == 292030 and self.tw3_steamrgb_claim.active()
-                )
+                _, tw3_steamrgb_active = self._tw3_steamrgb_state(values, game)
                 performance = self.performance.output(
                     metric=values["performance_metric"],
                     cool_c=values["cool_temp_c"],
@@ -990,8 +998,8 @@ class Engine:
             values["stripmine_integration_enabled"]
             and self.stripmine_claim.active()
         )
-        tw3_steamrgb_detected = bool(
-            self._game.appid == 292030 and self.tw3_steamrgb_claim.active()
+        tw3_steamrgb_detected, tw3_steamrgb_active = self._tw3_steamrgb_state(
+            values, self._game
         )
         sample = self.performance.sample
         art = self.artwork.status(values["launch_artwork_colour_count"])
@@ -1189,6 +1197,7 @@ class Engine:
                 "controller_low_variant": values["controller_low_variant"],
                 "controller_charging_variant": values["controller_charging_variant"],
                 "controller_duo_variant": values["controller_duo_variant"],
+                "controller_colour_preset": values["controller_colour_preset"],
                 "controller_colour_mode": values["controller_colour_mode"],
                 "controller_colour_normal": values["controller_colour_normal"],
                 "controller_colour_medium": values["controller_colour_medium"],
@@ -1207,7 +1216,9 @@ class Engine:
                 "weather_shadow_cutoff": values["weather_shadow_cutoff"],
                 "stripmine_integration_enabled": values["stripmine_integration_enabled"],
                 "stripmine_detected": stripmine_detected,
+                "tw3_steamrgb_integration_enabled": values["tw3_steamrgb_integration_enabled"],
                 "tw3_steamrgb_detected": tw3_steamrgb_detected,
+                "tw3_steamrgb_active": tw3_steamrgb_active,
                 "stripmine_priority_artwork": values["stripmine_priority_artwork"],
                 "stripmine_priority_performance": values["stripmine_priority_performance"],
                 "stripmine_priority_weather": values["stripmine_priority_weather"],

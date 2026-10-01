@@ -206,22 +206,14 @@ const CONTROLLER_COLOUR_MODE_OPTIONS = [
   { data: "battery", label: "Battery level" },
   { data: "players", label: "Player seats" },
 ];
+const CONTROLLER_COLOUR_PRESET_OPTIONS = [
+  { data: "automatic", label: "Automatic" },
+  { data: "manual", label: "Manual" },
+];
 const CONTROLLER_PREVIEW_COUNT_OPTIONS = [1, 2, 3, 4].map((count) => ({
   data: count,
   label: `${count} controller${count === 1 ? "" : "s"}`,
 }));
-const UPDATE_INTERVAL_OPTIONS = [
-  { data: 15, label: "15 minutes" },
-  { data: 60, label: "1 hour" },
-  { data: 180, label: "3 hours" },
-  { data: 360, label: "6 hours" },
-  { data: 720, label: "12 hours" },
-  { data: 1440, label: "24 hours" },
-];
-const UPDATE_CHANNEL_OPTIONS = [
-  { data: "stable", label: "Stable" },
-  { data: "beta", label: "Beta" },
-];
 function formatRemaining(seconds: number): string {
   const safe = Math.max(0, Math.ceil(seconds));
   const hours = Math.floor(safe / 3600);
@@ -627,6 +619,19 @@ function ControllersPanel({ status, setStatus }: { status: Status; setStatus: (n
   const [previewTarget, setPreviewTarget] = useState(0);
   const telemetry = status.debug.controller_telemetry;
   const stale = (status.debug.controller_last_update_age_s ?? 0) > 10;
+  const automaticColours = status.controller_colour_preset === "automatic";
+  const detectedControllerCount = status.controllers.controllers.length;
+  const batteryColourChoices = [
+    ["controller_colour_normal", `Healthy battery · above ${Math.max(35, status.controller_low_threshold + 5)}%`],
+    ["controller_colour_medium", "Medium battery"],
+    ["controller_colour_low", `Low battery · ${status.controller_low_threshold}% or less`],
+  ] as const;
+  const playerColourChoices = [
+    ["controller_player_colour_1", "Player 1"],
+    ["controller_player_colour_2", "Player 2"],
+    ["controller_player_colour_3", "Player 3"],
+    ["controller_player_colour_4", "Player 4"],
+  ] as const;
   const preview = async (kind: keyof typeof CONTROLLER_VARIANTS, variant: string) => {
     try {
       const count = kind === "duo" ? Math.max(2, previewCount) : previewCount;
@@ -695,34 +700,46 @@ function ControllersPanel({ status, setStatus }: { status: Status; setStatus: (n
     </PanelSection>
     <PanelSection title="Controller colours">
       <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .8 }}>
-        Battery level uses status colours. Player seats gives P1 to P4 a fixed colour. Low-battery and charging signals keep their warning colours, and white highlights stay white.
+        Automatic uses battery status colours with one controller, then fixed P1 to P4 colours from two controllers. Battery level still controls the length of every gauge. Low-battery and charging signals keep their warning colours, and white highlights stay white.
       </div></PanelSectionRow>
+      <PanelSectionRow><DropdownItem label="Colour preset"
+        description="Automatic follows the connected controller count. Manual keeps one colour meaning at every count."
+        rgOptions={CONTROLLER_COLOUR_PRESET_OPTIONS}
+        selectedOption={status.controller_colour_preset}
+        onChange={async (option) => setStatus(await setSetting("controller_colour_preset", String(option.data)))} /></PanelSectionRow>
       <PanelSectionRow><DropdownItem label="Colour meaning"
-        description="Choose battery status colours or fixed player-seat colours for permanent gauges and multiplayer patterns."
+        description={automaticColours
+          ? "Managed by Automatic: battery level for one controller, player seats for two to four controllers."
+          : "Choose battery status colours or fixed player-seat colours for permanent gauges and multiplayer patterns."}
         rgOptions={CONTROLLER_COLOUR_MODE_OPTIONS}
         selectedOption={status.controller_colour_mode}
+        disabled={automaticColours}
         onChange={async (option) => setStatus(await setSetting("controller_colour_mode", String(option.data)))} /></PanelSectionRow>
+      {automaticColours ? <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .78 }}>
+        {detectedControllerCount === 1
+          ? "Current rule: one detected controller, so the gauge uses battery colours."
+          : detectedControllerCount >= 2
+            ? `Current rule: ${detectedControllerCount} detected controllers, so the gauges use player colours.`
+            : "Current rule: the next single controller will use battery colours. Two or more will use player colours."}
+        <div>Previews apply the same rule to the selected preview count.</div>
+      </div></PanelSectionRow> : null}
       <PanelSectionRow><SliderField label="Controller brightness" min={10} max={100} step={5}
         showValue valueSuffix="%" value={status.controller_gauge_brightness}
         onChange={async (value) => setStatus(await setSetting("controller_gauge_brightness", value))} /></PanelSectionRow>
-      {(status.controller_colour_mode === "battery" ? ([
-        ["controller_colour_normal", `Healthy battery · above ${Math.max(35, status.controller_low_threshold + 5)}%`],
-        ["controller_colour_medium", "Medium battery"],
-        ["controller_colour_low", `Low battery · ${status.controller_low_threshold}% or less`],
-        ["controller_colour_charging", "Connection / charging colour"],
-      ] as const) : ([
-        ["controller_player_colour_1", "Player 1"],
-        ["controller_player_colour_2", "Player 2"],
-        ["controller_player_colour_3", "Player 3"],
-        ["controller_player_colour_4", "Player 4"],
-      ] as const)).map(([key, label]) => <PanelSectionRow key={key}>
+      {automaticColours ? <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .72 }}>One controller</div></PanelSectionRow> : null}
+      {(automaticColours || status.controller_colour_mode === "battery" ? batteryColourChoices : []).map(([key, label]) => <PanelSectionRow key={key}>
         <ColorChoice label={label} color={status[key]}
           onClick={() => chooseSettingColor(key, label, status[key], setStatus)} />
       </PanelSectionRow>)}
-      {status.controller_colour_mode === "players" ? <PanelSectionRow>
+      {automaticColours ? <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .72 }}>Two to four controllers</div></PanelSectionRow> : null}
+      {(automaticColours || status.controller_colour_mode === "players" ? playerColourChoices : []).map(([key, label]) => <PanelSectionRow key={key}>
+        <ColorChoice label={label} color={status[key]}
+          onClick={() => chooseSettingColor(key, label, status[key], setStatus)} />
+      </PanelSectionRow>)}
+      <PanelSectionRow>
         <ColorChoice label="Connection / charging colour" color={status.controller_colour_charging}
           onClick={() => chooseSettingColor("controller_colour_charging", "Connection / charging colour", status.controller_colour_charging, setStatus)} />
-      </PanelSectionRow> : null}
+      </PanelSectionRow>
     </PanelSection>
     <PanelSection title="Preview setup">
       <PanelSectionRow><DropdownItem label="Controllers in preview"
@@ -946,6 +963,8 @@ function CustomizationPanel({ status, setStatus }: { status: Status; setStatus: 
 
 function ScreenSyncPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
   const activation = status.screen_sync.activation;
+  const directGamescopeSelector = status.screen_sync.node_id === null
+    && status.screen_sync.capture_selector.includes("Gamescope name");
   const activationLabel = activation.reason === "manual-preview"
     ? `Manual preview (${Math.ceil(activation.preview_remaining_s)} s remaining)`
     : activation.reason === "steam-screensaver"
@@ -963,6 +982,8 @@ function ScreenSyncPanel({ status, setStatus }: { status: Status; setStatus: (ne
     ? `Capturing ${status.screen_sync.frames_per_second.toFixed(1)} frames/s`
     : status.screen_sync.phase === "conflict"
       ? "Paused because another app is capturing Gamescope"
+      : status.screen_sync.phase === "waiting"
+        ? `Capture closed, waiting to rediscover Gamescope${status.screen_sync.error ? `: ${status.screen_sync.error}` : ""}`
       : status.screen_sync.phase === "error"
         ? `Unavailable: ${status.screen_sync.error}`
         : status.current_display === "screen_sync" && status.game.appid > 0
@@ -988,6 +1009,22 @@ function ScreenSyncPanel({ status, setStatus }: { status: Status; setStatus: (ne
         {status.screen_sync.runtime_dir ? <div>PipeWire session: {status.screen_sync.runtime_dir}</div> : null}
         {status.screen_sync.capture_identity ? <div>PipeWire identity: {status.screen_sync.capture_identity}</div> : null}
         {status.screen_sync.capture_selector ? <div>Selector: {status.screen_sync.capture_selector}</div> : null}
+        {directGamescopeSelector
+          ? <div style={{ color: status.screen_sync.phase === "capturing" ? "#93f7a7" : "#ffd37a" }}>
+            {status.screen_sync.phase === "capturing"
+              ? "Direct Gamescope source active. Numeric node enumeration is not required."
+              : "Gamescope is not ready in this PipeWire session yet. Retrying automatically."}
+          </div>
+          : null}
+        {status.screen_sync.orphan_processes_cleaned > 0
+          ? <div>Recovered stale capture processes: {status.screen_sync.orphan_processes_cleaned}</div>
+          : null}
+        {status.screen_sync.capture_sessions_released > 0
+          ? <div>Failed capture sessions released before retry: {status.screen_sync.capture_sessions_released}</div>
+          : null}
+        {status.screen_sync.last_release_error
+          ? <div>Last released session: {status.screen_sync.last_release_error}</div>
+          : null}
         {status.screen_sync.phase === "error" && status.screen_sync.discovery_detail
           ? <div>Discovery: {status.screen_sync.discovery_detail}</div>
           : null}
@@ -1077,6 +1114,30 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
     ["Light Events", "stripmine_priority_light_events", "Notifications, achievements, screenshots and recording cues."],
   ] as const);
   return <>
+    <PanelSection title="TW3-SteamRGB compatibility">
+      <PanelSectionRow>
+        <ToggleField
+          label="Yield to TW3-SteamRGB HUD"
+          description="While The Witcher 3 is running, pause GabeCubeAura permanent displays only when TW3-SteamRGB publishes a fresh ownership claim."
+          checked={status.tw3_steamrgb_integration_enabled}
+          onChange={async (value) => setStatus(await setSetting("tw3_steamrgb_integration_enabled", value))}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <div style={{ width: "100%", fontSize: ".82em", opacity: .86 }}>
+          {status.tw3_steamrgb_detected
+            ? status.tw3_steamrgb_active
+              ? "A live TW3-SteamRGB claim is active. GabeCubeAura keeps temporary alerts available but yields its permanent display."
+              : "A live TW3-SteamRGB claim was detected but is being ignored by this setting."
+            : status.game.appid === 292030
+              ? "The Witcher 3 is running, but no live TW3-SteamRGB claim is detected. GabeCubeAura keeps control."
+              : "No live TW3-SteamRGB claim is detected."}
+          <div style={{ marginTop: 6, opacity: .72 }}>
+            Disable this only when TW3-SteamRGB is absent or for troubleshooting. If another plugin is physically writing to the bar, GabeCubeAura can still yield through its normal Valve and external-owner safety guard.
+          </div>
+        </div>
+      </PanelSectionRow>
+    </PanelSection>
     <PanelSection title="StripMine compatibility">
       <PanelSectionRow>
         <ToggleField

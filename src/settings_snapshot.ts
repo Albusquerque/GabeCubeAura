@@ -113,10 +113,12 @@ export function buildSettingsSnapshot(status: Status): SettingsSnapshotSection[]
         `Charging ${chargingMode[status.controller_charging_mode]} · Low warning ≤${status.controller_low_threshold}%`,
         `Connect ${onOff(status.controller_connect_enabled)}: ${controller("connect", status.controller_connect_variant)} · Single ${controller("persistent", status.controller_persistent_variant)}`,
         `Low ${onOff(status.controller_low_enabled)}: ${controller("low", status.controller_low_variant)} · Charge style ${controller("charging", status.controller_charging_variant)}`,
-        `Multiple controllers ${controller("duo", status.controller_duo_variant)} · Brightness ${status.controller_gauge_brightness}% · Colour meaning ${status.controller_colour_mode === "players" ? "Player seats" : "Battery level"}`,
-        status.controller_colour_mode === "players"
-          ? `Seats P1 ${rgbHex(status.controller_player_colour_1)} · P2 ${rgbHex(status.controller_player_colour_2)} · P3 ${rgbHex(status.controller_player_colour_3)} · P4 ${rgbHex(status.controller_player_colour_4)} · charge ${rgbHex(status.controller_colour_charging)}`
-          : `Colours healthy ${rgbHex(status.controller_colour_normal)} · medium ${rgbHex(status.controller_colour_medium)} · low ${rgbHex(status.controller_colour_low)} · charge ${rgbHex(status.controller_colour_charging)}`,
+        `Multiple controllers ${controller("duo", status.controller_duo_variant)} · Brightness ${status.controller_gauge_brightness}% · Colour preset ${status.controller_colour_preset === "automatic" ? "Automatic" : "Manual"}`,
+        status.controller_colour_preset === "automatic"
+          ? "Automatic rule 1 controller: battery level · 2 to 4 controllers: player seats"
+          : `Manual colour meaning ${status.controller_colour_mode === "players" ? "Player seats" : "Battery level"}`,
+        `Battery colours healthy ${rgbHex(status.controller_colour_normal)} · medium ${rgbHex(status.controller_colour_medium)} · low ${rgbHex(status.controller_colour_low)} · charge ${rgbHex(status.controller_colour_charging)}`,
+        `Seats P1 ${rgbHex(status.controller_player_colour_1)} · P2 ${rgbHex(status.controller_player_colour_2)} · P3 ${rgbHex(status.controller_player_colour_3)} · P4 ${rgbHex(status.controller_player_colour_4)}`,
       ],
     },
     {

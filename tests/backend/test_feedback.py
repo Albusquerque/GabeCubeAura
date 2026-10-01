@@ -196,6 +196,8 @@ class FeedbackTests(unittest.TestCase):
             self.assertEqual(values["controller_player_colour_3"], [255, 119, 0])
             values = store.update({"controller_colour_mode": "mirrored"})
             self.assertEqual(values["controller_colour_mode"], "battery")
+            values = store.update({"controller_colour_preset": "fixed"})
+            self.assertEqual(values["controller_colour_preset"], "automatic")
 
     def test_legacy_signals_only_does_not_reactivate_dormant_game_displays(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -234,6 +236,7 @@ class FeedbackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             store = SettingsStore(str(Path(folder) / "settings.json"))
             values = store.update({"controller_battery_display": "everywhere", "controller_gauge_brightness": 50,
+                "controller_colour_preset": "manual", "controller_colour_mode": "battery",
                 "controller_colour_normal": [0, 100, 200], "controller_colour_medium": [200, 100, 0],
                 "controller_colour_low": [120, 0, 80], "controller_colour_charging": [0, 80, 160]})
             self.assertEqual(SettingsStore(store.path).all()["controller_colour_normal"], [0, 100, 200])
