@@ -39,6 +39,7 @@ export interface UpdateStatus {
   notifications: boolean;
   check_interval_minutes: 15 | 60 | 180 | 360 | 720 | 1440;
   channel: "stable" | "beta";
+  return_to_stable: boolean;
   test_build: boolean;
 }
 

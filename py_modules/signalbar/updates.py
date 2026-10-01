@@ -71,7 +71,7 @@ TEST_VERSION = re.compile(
     r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-test\.(0|[1-9]\d*)$"
 )
 BETA_VERSION = re.compile(
-    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.?(0|[1-9]\d*)$"
+    r"^(?:v)?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)$"
 )
 HEX_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
@@ -829,7 +829,7 @@ class UpdateManager:
     def _prepare_locked(self):
         version = str(self._state.get("available_version", ""))
         if not version:
-            raise UpdateError("state", "No newer version is available on the selected channel")
+            raise UpdateError("state", "No version is available on the selected channel")
         channel = self._state.get("checked_channel") or self._configured_channel()
         client = self._release_client(channel)
         release = self._release
@@ -942,7 +942,7 @@ class UpdateManager:
                     json.dumps({"name": "gabecubeaura", "version": "1.1.0"}), encoding="utf-8",
                 )
                 (fixture / "plugin.json").write_text(
-                    json.dumps({"name": "GabeCubeAura", "author": "Alyenax"}), encoding="utf-8",
+                    json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
                 )
                 from zipfile import ZIP_DEFLATED, ZipFile
                 with ZipFile(archive, "w", ZIP_DEFLATED) as package:
@@ -1002,7 +1002,7 @@ class UpdateManager:
                         json.dumps({"name": "gabecubeaura", "version": version}), encoding="utf-8",
                     )
                     (directory / "plugin.json").write_text(
-                        json.dumps({"name": "GabeCubeAura", "author": "Alyenax"}), encoding="utf-8",
+                        json.dumps({"name": "GabeCubeAura", "author": "Albus Querque"}), encoding="utf-8",
                     )
                 lab_state = lab / "transaction-state.json"
                 _atomic_json(lab_state, {})
