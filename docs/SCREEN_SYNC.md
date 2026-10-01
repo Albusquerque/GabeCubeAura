@@ -1,4 +1,4 @@
-# Screen Sync in GabeCubeAura 1.2.0-beta.3
+# Screen Sync in GabeCubeAura 1.2.1-beta.1
 
 Screen Sync is integrated into GabeCubeAura's normal display routing. It uses
 the same Providers to Arbiter to Renderer pipeline as Artwork, Performance,

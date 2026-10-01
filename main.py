@@ -20,10 +20,6 @@ from signalbar.steam import get_library_artwork  # noqa: E402
 from signalbar.providers.weather import search_cities  # noqa: E402
 from signalbar import __version__  # noqa: E402
 from signalbar.updates import UpdateManager  # noqa: E402
-from signalbar.witcher_install import WitcherTelemetryInstaller  # noqa: E402
-from signalbar.witcher_diagnostics import (  # noqa: E402
-    diagnostic_export_path, write_witcher_diagnostics,
-)
 
 
 class Plugin:
@@ -52,16 +48,8 @@ class Plugin:
         migrated_from = self._migrate_legacy_settings(decky.DECKY_PLUGIN_SETTINGS_DIR)
         settings_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
         cache_path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "artwork-cache.json")
-        witcher_installer = WitcherTelemetryInstaller(PLUGIN_DIR)
-        self.engine = Engine(
-            SettingsStore(settings_path), cache_path, decky.logger,
-            witcher_installer=witcher_installer,
-        )
+        self.engine = Engine(SettingsStore(settings_path), cache_path, decky.logger)
         self.configuration_export_path = configuration_export_path(
-            decky.DECKY_PLUGIN_SETTINGS_DIR,
-            os.environ.get("DECKY_USER_HOME"),
-        )
-        self.witcher_diagnostic_path = diagnostic_export_path(
             decky.DECKY_PLUGIN_SETTINGS_DIR,
             os.environ.get("DECKY_USER_HOME"),
         )
@@ -202,27 +190,6 @@ class Plugin:
     async def stop_free_timer(self):
         self.engine.stop_free_timer()
         return self.engine.status()
-
-    async def set_witcher_lab(self, state):
-        return self.engine.update_witcher_lab(state)
-
-    async def trigger_witcher_sign(self, sign: str):
-        return self.engine.trigger_witcher_sign(sign)
-
-    async def stop_witcher_lab(self):
-        return self.engine.stop_witcher_lab()
-
-    async def install_witcher_telemetry_mod(self):
-        return self.engine.install_witcher_telemetry_mod()
-
-    async def remove_witcher_telemetry_mod(self):
-        return self.engine.remove_witcher_telemetry_mod()
-
-    async def export_witcher_diagnostics(self):
-        return write_witcher_diagnostics(
-            self.witcher_diagnostic_path,
-            self.engine.status(),
-        )
 
     async def preview_countdown(self):
         self.engine.preview_countdown()

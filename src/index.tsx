@@ -19,13 +19,10 @@ import { TbCubeSpark } from "react-icons/tb";
 
 import {
   exportConfiguration,
-  exportWitcherDiagnostics,
   exportUpdateTestReport,
   checkForUpdates,
   dismissUpdateError,
   importConfiguration,
-  installWitcherTelemetryMod,
-  removeWitcherTelemetryMod,
   getArtwork,
   getStatus,
   getUpdateStatus,
@@ -45,15 +42,11 @@ import {
   setGameDisplay,
   setSetting,
   setUpdatePreferences,
-  setWitcherLab,
   startFreeTimer,
   stopFreeTimer,
-  stopWitcherLab,
   submitArtwork,
   triggerEvent,
-  triggerWitcherSign,
 } from "./api";
-import type { WitcherLabUpdate, WitcherSign } from "./api";
 import { sampleArtwork } from "./artwork";
 import { PalettePreview } from "./components/PalettePreview";
 import { CUSTOMIZATION_PATTERN_OPTIONS, LAUNCH_ARTWORK_PATTERN_OPTIONS, customizationPatternLabel } from "./customization_catalog";
@@ -97,14 +90,6 @@ const UPDATE_INTERVAL_OPTIONS = [
 const UPDATE_CHANNEL_OPTIONS = [
   { data: "stable", label: "Stable" },
   { data: "beta", label: "Beta" },
-];
-
-const WITCHER_SIGNS: { sign: WitcherSign; label: string; colour: string }[] = [
-  { sign: "aard", label: "Aard", colour: "rgb(158, 214, 255)" },
-  { sign: "igni", label: "Igni", colour: "rgb(255, 79, 10)" },
-  { sign: "yrden", label: "Yrden", colour: "rgb(200, 81, 255)" },
-  { sign: "quen", label: "Quen", colour: "rgb(255, 205, 68)" },
-  { sign: "axii", label: "Axii", colour: "rgb(255, 255, 255)" },
 ];
 
 const displayLabel = (display: HomeDisplay | GameDisplay) => (
@@ -1066,255 +1051,6 @@ function ScreenSyncPanel({ status, setStatus }: { status: Status; setStatus: (ne
   </>;
 }
 
-function WitcherPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
-  const [message, setMessage] = useState("");
-  const [installing, setInstalling] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const lab = status.witcher;
-  const installation = lab.installation;
-  const logging = installation.logging;
-  const update = async (changes: WitcherLabUpdate) => {
-    try {
-      setStatus(await setWitcherLab(changes));
-      setMessage("");
-    } catch (error) {
-      setMessage(String(error));
-    }
-  };
-  const cast = async (sign: WitcherSign) => {
-    try {
-      const played = await triggerWitcherSign(sign);
-      setStatus(await getStatus());
-      setMessage(played
-        ? `${sign[0].toUpperCase()}${sign.slice(1)} simulated.`
-        : "Enable the lab while The Witcher 3 is running first.");
-    } catch (error) {
-      setMessage(String(error));
-    }
-  };
-  const unavailable = !status.signalbar_enabled
-    ? "Enable GabeCubeAura outputs before starting the lab."
-    : lab.reason;
-  return <>
-    <PanelSection title="WitcherScript telemetry mod">
-      <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em", lineHeight: 1.45 }}>
-        <b style={{ color: installation.installed ? "#93f7a7" : "#ffca86" }}>
-          {installation.state === "installed" ? "Script file installed and verified"
-            : installation.state === "update_required" ? "Installed file needs repair"
-            : installation.state === "legacy_path" ? "Legacy Mods path detected · repair required"
-            : installation.state === "not_installed" ? "Not installed"
-            : installation.state === "game_not_found" ? "The Witcher 3 installation not found"
-            : installation.state === "source_missing" ? "Telemetry source missing from GabeCubeAura"
-            : "Installation status unavailable"}
-        </b>
-        <div style={{ marginTop: 5, opacity: .76 }}>
-          This installs only GabeCubeAura's telemetry script inside the Steam AppID 292030 game directory.
-          Existing different content is backed up before replacement.
-        </div>
-        {installation.installed ? <div style={{ marginTop: 5,
-          color: lab.runtime_verified_session ? "#93f7a7" : "#ffca86" }}>
-          Runtime: {lab.runtime_verified_session
-            ? "live GCA1 telemetry verified for this game session"
-            : "file checksum verified; waiting for the first live GCA1 record before automatic takeover"}
-        </div> : null}
-        <div style={{ marginTop: 5,
-          color: logging.launch_options.state === "configured" ? "#93f7a7" : "#ffca86" }}>
-          Steam launch options: {logging.launch_options.state === "configured"
-            ? "-net and -debugscripts detected"
-            : logging.launch_options.state === "partial"
-              ? `${logging.launch_options.has_net ? "-net present" : "-net missing"} · ${logging.launch_options.has_debugscripts ? "-debugscripts present" : "-debugscripts missing"}`
-              : logging.launch_options.state === "not_set"
-                ? "not set for AppID 292030"
-                : "not detectable; verify manually"}
-        </div>
-        <div style={{ marginTop: 5,
-          color: logging.force_flush.state === "configured" ? "#93f7a7" : "#ffca86" }}>
-          Script flush: {logging.force_flush.state === "configured"
-            ? "DebugScriptsForceFlush=true detected"
-            : logging.force_flush.state === "missing"
-              ? "DebugScriptsForceFlush=true not found"
-              : "user.settings not found yet"}
-        </div>
-        {installation.target_path ? <div style={{ marginTop: 5, opacity: .58, wordBreak: "break-all" }}>
-          Target: {installation.target_path}
-        </div> : null}
-        {installation.legacy_target_path ? <div style={{ marginTop: 5, color: "#ffca86",
-          wordBreak: "break-all" }}>
-          Legacy path to migrate: {installation.legacy_target_path}
-        </div> : null}
-        {installation.backup_path ? <div style={{ marginTop: 5, opacity: .68, wordBreak: "break-all" }}>
-          Backup: {installation.backup_path}
-        </div> : null}
-        {installation.preserved_path ? <div style={{ marginTop: 5, opacity: .68, wordBreak: "break-all" }}>
-          Preserved before removal: {installation.preserved_path}
-        </div> : null}
-        {installation.error ? <div style={{ marginTop: 5, color: "#ff9a9a" }}>{installation.error}</div> : null}
-      </div></PanelSectionRow>
-      <PanelSectionRow><ButtonItem
-        label={installation.installed ? "Repair telemetry mod" : "Install telemetry mod"}
-        description="Copies and verifies gca_telemetry.ws in the documented lower-case Witcher 3 mods directory. A former upper-case Mods copy is safely migrated. Restart the game afterward so WitcherScript recompiles."
-        disabled={installing || removing || !installation.game_found || !installation.source_found}
-        onClick={() => {
-          setInstalling(true);
-          void installWitcherTelemetryMod()
-            .then((next) => {
-              setStatus(next);
-              setMessage("Telemetry script installed and verified. Restart The Witcher 3.");
-            })
-            .catch((error) => setMessage(`Installation failed: ${String(error)}`))
-            .finally(() => setInstalling(false));
-        }}>
-        {installing ? "Installing…" : installation.installed ? "Repair" : "Install"}
-      </ButtonItem></PanelSectionRow>
-      <PanelSectionRow><ButtonItem
-          label="Reset / remove gca_telemetry.ws"
-          description="Always checks both mods and legacy Mods paths. The GabeCubeAura file is removed, a previous backup is restored, and unknown modified content is preserved instead of deleted. Restart the game afterward."
-          disabled={installing || removing || !installation.game_found}
-          onClick={() => {
-            setRemoving(true);
-            void removeWitcherTelemetryMod()
-              .then((next) => {
-                setStatus(next);
-                const action = next.witcher.installation.last_action;
-                setMessage(action === "restored_backup"
-                  ? "GabeCubeAura telemetry removed and the previous file restored. Restart The Witcher 3."
-                  : action === "preserved_unknown"
-                    ? "The active file was removed from the mod path and preserved unchanged. Restart The Witcher 3."
-                    : "GabeCubeAura telemetry file removed. Restart The Witcher 3.");
-              })
-              .catch((error) => setMessage(`Removal failed: ${String(error)}`))
-              .finally(() => setRemoving(false));
-          }}>
-          {removing ? "Resetting…" : "Reset"}
-        </ButtonItem></PanelSectionRow>
-      <PanelSectionRow><ButtonItem
-        label="Export Witcher + Screen Sync diagnostics"
-        description="Writes a readable JSON snapshot, relevant script-log excerpts and GStreamer errors to Documents/GabeCubeAura-Witcher3-diagnostics.json."
-        disabled={exporting}
-        onClick={() => {
-          setExporting(true);
-          void exportWitcherDiagnostics()
-            .then((result) => setMessage(`Diagnostic JSON written to ${result.path}`))
-            .catch((error) => setMessage(`Diagnostic export failed: ${String(error)}`))
-            .finally(() => setExporting(false));
-        }}>
-        {exporting ? "Exporting…" : "Export JSON"}
-      </ButtonItem></PanelSectionRow>
-      <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .72 }}>
-        The repaired script writes a direct <code>GabeCubeAuraTelemetry.ini</code> state channel in Documents.
-        <code>-net -debugscripts</code> and <code>DebugScriptsForceFlush=true</code> remain useful for the
-        independent script-log fallback and compilation diagnostics.
-      </div></PanelSectionRow>
-      {message ? <PanelSectionRow><div style={{ fontSize: ".78em" }}>{message}</div></PanelSectionRow> : null}
-    </PanelSection>
-    <PanelSection title="The Witcher 3 · experimental">
-      <PanelSectionRow><div style={{ width: "100%", fontSize: ".82em", lineHeight: 1.45 }}>
-        Live HUD bridge for the Complete Edition, with manual controls retained as an installation fallback.
-        It uses GabeCubeAura's normal ownership, StripMine handoff and 17-LED renderer.
-        <div style={{ marginTop: 7, opacity: .76 }}>
-          Detected: {status.game.title || "no running game"} · AppID {status.game.appid || "none"}
-        </div>
-        {!lab.eligible || !status.signalbar_enabled
-          ? <div style={{ marginTop: 6, color: "#ffca86" }}>{unavailable}</div> : null}
-      </div></PanelSectionRow>
-      <PanelSectionRow><ToggleField
-        label={lab.auto_managed ? "Experimental light output · automatic" : "Experimental light output"}
-        description={lab.auto_managed
-          ? lab.runtime_verified_session
-            ? "The bridge produced live telemetry in this session, so the lab stays armed while AppID 292030 runs. Steam downloads, native system warnings, launch effects, alerts and playtime countdowns still retain priority; leaving the game releases it."
-            : "The checksum-verified bridge armed the Lab automatically for AppID 292030. It will not send simulated HUD colours while waiting for the first live GCA1 record."
-          : "Uses the Witcher HUD instead of the routed in-game display. Steam activity, launch effects, alerts, playtime countdowns or leaving the game stops or temporarily replaces it."}
-        checked={lab.enabled}
-        disabled={lab.auto_managed || !lab.eligible || !status.signalbar_enabled}
-        onChange={(value) => void update({ enabled: value })}
-      /></PanelSectionRow>
-      <PanelSectionRow><div style={{ width: "100%", fontSize: ".8em" }}>
-        <b>{lab.selected ? "Lab physically active" : lab.armed ? "Lab armed but not selected" : "Lab off"}</b>
-        {lab.auto_managed ? " · automatic for this game session" : ""}
-        {lab.selected ? ` · showing ${status.provider}` : lab.armed ? ` · selected provider: ${status.provider}` : ""}
-        <div style={{ marginTop: 5, color: status.debug.engine_running ? "#93f7a7" : "#ff9a9a" }}>
-          Runtime: {status.debug.engine_running
-            ? `render loop live · decision ${formatAge(status.debug.decision_age_s)}`
-            : `render loop stopped${status.error ? ` · ${status.error}` : ""}`}
-        </div>
-        {status.debug.last_runtime_error ? <div style={{ marginTop: 5, color: "#ff9a9a" }}>
-          Last runtime fault ({formatAge(status.debug.last_runtime_error_age_s)}): {status.debug.last_runtime_error}
-        </div> : null}
-        <div style={{ marginTop: 5, color: status.owner === "GabeCubeAura" ? "#93f7a7" : "#ffca86" }}>
-          Physical bar: {status.owner === "GabeCubeAura"
-            ? `GabeCubeAura owns it · ${status.provider}`
-            : `Valve owns it${status.suspension_reason ? ` · ${status.suspension_reason}` : ""}`}
-        </div>
-        <div style={{ marginTop: 5, color: lab.telemetry_connected ? "#93f7a7" : "#ffca86" }}>
-          Source: {lab.telemetry_connected ? "live WitcherScript telemetry" : "manual fallback"}
-          {lab.telemetry_connected && lab.telemetry_transport
-            ? ` · ${lab.telemetry_transport === "state-file" ? "direct state file" : "script log"}` : ""}
-          {lab.telemetry_connected && lab.telemetry_age_s != null
-            ? ` · ${lab.telemetry_age_s.toFixed(1)} s ago` : ""}
-        </div>
-        {!lab.telemetry_connected && lab.eligible ? <div style={{ marginTop: 5, opacity: .75 }}>
-          Repair the companion script into the lower-case <code>mods</code> directory and restart the game.
-          The direct state file requires no debug launch flag; the script log remains a second diagnostic path.
-        </div> : null}
-        {lab.telemetry_path ? <div style={{ marginTop: 4, opacity: .58, wordBreak: "break-all" }}>
-          Telemetry file: {lab.telemetry_path}
-        </div> : <div style={{ marginTop: 4, opacity: .68 }}>
-          Telemetry file: not found · {lab.telemetry_candidate_count} bounded locations checked
-        </div>}
-        {!lab.telemetry_path && lab.telemetry_expected_path ? <div style={{ marginTop: 4, opacity: .5,
-          wordBreak: "break-all" }}>
-          First expected path: {lab.telemetry_expected_path}
-        </div> : null}
-        {lab.telemetry_error ? <div style={{ marginTop: 4, color: "#ff9a9a" }}>
-          Telemetry read error: {lab.telemetry_error}
-        </div> : null}
-        <PalettePreview colors={lab.colors} />
-        <div style={{ opacity: .7 }}>
-          Left 8: vitality · centre: adrenaline · right 8: stamina · green edges: toxicity
-        </div>
-      </div></PanelSectionRow>
-    </PanelSection>
-    <PanelSection title={lab.telemetry_connected ? "Live HUD values" : "Manual fallback values"}>
-      {lab.telemetry_connected ? <PanelSectionRow><div style={{ fontSize: ".76em", opacity: .74 }}>
-        These controls mirror Geralt's live state and are refreshed by the game approximately ten times per second.
-      </div></PanelSectionRow> : null}
-      <PanelSectionRow><SliderField label="Vitality" value={lab.health} min={0} max={100} step={5}
-        showValue valueSuffix="%" onChange={(value) => void update({ health: value })} /></PanelSectionRow>
-      <PanelSectionRow><SliderField label="Stamina" value={lab.stamina} min={0} max={100} step={5}
-        showValue valueSuffix="%" onChange={(value) => void update({ stamina: value })} /></PanelSectionRow>
-      <PanelSectionRow><SliderField label="Toxicity" value={lab.toxicity} min={0} max={100} step={5}
-        showValue valueSuffix="%" onChange={(value) => void update({ toxicity: value })} /></PanelSectionRow>
-      <PanelSectionRow><SliderField label="Adrenaline points" value={lab.adrenaline} min={0} max={3} step={1}
-        showValue onChange={(value) => void update({ adrenaline: value })} /></PanelSectionRow>
-      <PanelSectionRow><ToggleField label="Combat state"
-        description="Raises vitality intensity. At 25% vitality or below it enables a restrained red pulse."
-        checked={lab.combat} onChange={(value) => void update({ combat: value })} /></PanelSectionRow>
-    </PanelSection>
-    <PanelSection title="Sign reactions">
-      <PanelSectionRow><div style={{ fontSize: ".78em", opacity: .76 }}>
-        Short centre-out waves use the RGB colours already assigned to each sign by the game's controller-light logic.
-      </div></PanelSectionRow>
-      {WITCHER_SIGNS.map(({ sign, label, colour }) => <PanelSectionRow key={sign}>
-        <ButtonItem label={label} description={colour} disabled={!lab.active}
-          onClick={() => void cast(sign)}>
-          <span style={{ display: "inline-block", width: 22, height: 22, borderRadius: 4,
-            background: colour, boxShadow: "0 0 0 1px rgba(255,255,255,.35)" }} />
-        </ButtonItem>
-      </PanelSectionRow>)}
-      <PanelSectionRow><ButtonItem
-        label={lab.auto_managed ? "Automatic until The Witcher 3 exits" : "Stop and release experimental output"}
-        description={lab.auto_managed
-          ? "The verified bridge is tied to AppID 292030. Quit the game to release the laboratory."
-          : undefined}
-        disabled={!lab.enabled || lab.auto_managed}
-        onClick={() => void stopWitcherLab().then(setStatus).catch((error) => setMessage(String(error)))}>
-        Stop
-      </ButtonItem></PanelSectionRow>
-    </PanelSection>
-  </>;
-}
-
 function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: (next: Status) => void }) {
   const priorities = ([
     ["Artwork", "stripmine_priority_artwork", "The sampled game artwork display."],
@@ -1324,7 +1060,6 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
     ["Game launches", "stripmine_priority_game_launches", "Temporary animations using colours from the launched game's artwork."],
     ["Customization+", "stripmine_priority_customization", "The persistent user-authored display."],
     ["Screen Sync", "stripmine_priority_screen_sync", "Live colours captured from the running game."],
-    ["The Witcher 3 lab", "stripmine_priority_witcher", "The manually simulated Witcher HUD display."],
     ["Light Events", "stripmine_priority_light_events", "Notifications, achievements, screenshots and recording cues."],
   ] as const);
   return <>
@@ -1367,7 +1102,7 @@ function CompatibilityPanel({ status, setStatus }: { status: Status; setStatus: 
   </>;
 }
 
-type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "screen-sync" | "witcher" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "updates" | "advanced";
+type Page = "quick" | "routing" | "customization" | "artwork" | "performance" | "screen-sync" | "launches" | "countdown" | "events" | "controllers" | "weather" | "compatibility" | "updates" | "advanced";
 
 const PAGE_END_LABELS: Record<Exclude<Page, "quick">, string> = {
   routing: "Display routing",
@@ -1375,7 +1110,6 @@ const PAGE_END_LABELS: Record<Exclude<Page, "quick">, string> = {
   artwork: "Artwork",
   performance: "Performance",
   "screen-sync": "Screen Sync",
-  witcher: "The Witcher 3 experimental lab",
   launches: "Game launches",
   countdown: "Playtime",
   events: "Light events",
@@ -1427,7 +1161,7 @@ function Content({ page = "quick" }: { page?: Page }) {
     void getStatus().then((next) => alive && setStatus(next)).catch(console.warn);
     const timer = window.setInterval(() => {
       void getStatus().then((next) => alive && setStatus(next)).catch(() => undefined);
-    }, page === "events" || page === "controllers" || page === "weather" || page === "witcher"
+    }, page === "events" || page === "controllers" || page === "weather"
       || page === "compatibility" || page === "launches" ? 100
       : page === "screen-sync" ? 250 : 1000);
     return () => {
@@ -1640,7 +1374,6 @@ function Content({ page = "quick" }: { page?: Page }) {
   };
   const performanceColors = performancePreview(status);
   const baseShownColors = status.provider.startsWith("launch-artwork:") ? status.launch_artwork.colors
-    : status.provider.startsWith("witcher-lab") ? status.witcher.colors
     : status.provider.startsWith("screen-sync") ? status.screen_sync.colors
     : status.provider.startsWith("customization:") ? status.customization.colors
     : status.provider.startsWith("event:") ? status.events.colors
@@ -1653,7 +1386,6 @@ function Content({ page = "quick" }: { page?: Page }) {
     ? addRecordingMarker(status, baseShownColors) : baseShownColors;
   const shownLabel = status.provider.startsWith("launch-artwork:")
     ? `Game launch · ${LAUNCH_ARTWORK_PATTERN_OPTIONS.find((item) => item.data === status.launch_artwork_pattern)?.label ?? status.launch_artwork_pattern}`
-    : status.provider.startsWith("witcher-lab") ? "The Witcher 3 experimental HUD"
     : status.provider.startsWith("screen-sync") ? "Screen Sync"
     : status.provider.startsWith("customization:") ? `Customization+ · ${customizationPatternLabel(status.customization_pattern)}`
     : status.provider.startsWith("event:") ? status.events.variant
@@ -1741,21 +1473,6 @@ function Content({ page = "quick" }: { page?: Page }) {
             Review update
           </ButtonItem>
         </PanelSectionRow>
-      </PanelSection> : null}
-
-      {page === "quick" && status.witcher.eligible ? <PanelSection title="The Witcher 3 · experimental">
-        <PanelSectionRow><div style={{ fontSize: ".8em", opacity: .78 }}>
-          A HUD-to-light-bar laboratory is available for the running Complete Edition.
-          {status.witcher.telemetry_connected
-            ? " Live WitcherScript telemetry is connected."
-            : status.witcher.runtime_verified_session
-              ? " The live bridge was verified in this session but its latest record is stale."
-              : " Automatic output is waiting for a first live GCA1 telemetry record; manual fallback remains optional."}
-        </div></PanelSectionRow>
-        <PanelSectionRow><ButtonItem label="Open Witcher HUD lab"
-          onClick={() => { Navigation.CloseSideMenus(); Navigation.Navigate("/gabecubeaura/settings/witcher"); }}>
-          Open experimental tab
-        </ButtonItem></PanelSectionRow>
       </PanelSection> : null}
 
       {page === "quick" ? <PanelSection title="Permanent displays">
@@ -1857,8 +1574,6 @@ function Content({ page = "quick" }: { page?: Page }) {
       {showPage("customization") ? <CustomizationPanel status={status} setStatus={setStatus} /> : null}
 
       {showPage("screen-sync") ? <ScreenSyncPanel status={status} setStatus={setStatus} /> : null}
-
-      {showPage("witcher") ? <WitcherPanel status={status} setStatus={setStatus} /> : null}
 
       {showPage("artwork") ? <PanelSection title="Artwork display">
         <PanelSectionRow>
@@ -2413,7 +2128,6 @@ function GabeCubeAuraSettings() {
     { title: "Artwork", route: "/gabecubeaura/settings/artwork", content: <Content page="artwork" /> },
     { title: "Performance", route: "/gabecubeaura/settings/performance", content: <Content page="performance" /> },
     { title: "Screen Sync", route: "/gabecubeaura/settings/screen-sync", content: <Content page="screen-sync" /> },
-    { title: "The Witcher 3 · experimental", route: "/gabecubeaura/settings/witcher", content: <Content page="witcher" /> },
     { title: "Game launches", route: "/gabecubeaura/settings/launches", content: <Content page="launches" /> },
     { title: "Playtime", route: "/gabecubeaura/settings/countdown", content: <Content page="countdown" /> },
     { title: "Light events", route: "/gabecubeaura/settings/events", content: <Content page="events" /> },

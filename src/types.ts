@@ -16,60 +16,6 @@ export type CompanionPriority = "stripmine" | "signalbar";
 export type WeatherCondition = "clear_day" | "clear_night" | "rain" | "cloud" | "cloud_night" | "breaks" | "breaks_night" | "snow" | "storm";
 export interface WeatherLocation { name: string; country: string; latitude: number; longitude: number }
 
-export interface WitcherLabStatus {
-  enabled: boolean;
-  auto_managed: boolean;
-  runtime_verified_session: boolean;
-  eligible: boolean;
-  armed: boolean;
-  selected: boolean;
-  active: boolean;
-  health: number;
-  stamina: number;
-  toxicity: number;
-  adrenaline: number;
-  combat: boolean;
-  sign: "" | "aard" | "axii" | "igni" | "quen" | "yrden";
-  sign_remaining_s: number;
-  colors: RGB[];
-  telemetry_connected: boolean;
-  telemetry_age_s: number | null;
-  telemetry_path: string;
-  telemetry_transport: "" | "state-file" | "script-log";
-  telemetry_candidate_count: number;
-  telemetry_expected_path: string;
-  telemetry_log_candidates: string[];
-  telemetry_state_candidates: string[];
-  telemetry_error: string;
-  source: "live" | "manual";
-  installation: {
-    state: "installed" | "not_installed" | "legacy_path" | "update_required" | "game_not_found" | "source_missing" | "error" | "unavailable";
-    installed: boolean;
-    game_found: boolean;
-    source_found: boolean;
-    game_path: string;
-    target_path: string;
-    legacy_target_path: string;
-    backup_path: string;
-    preserved_path: string;
-    last_action: "" | "installed" | "removed" | "restored_backup" | "preserved_unknown" | "already_absent";
-    logging: {
-      launch_options: {
-        state: "configured" | "partial" | "not_set" | "unknown";
-        has_net: boolean;
-        has_debugscripts: boolean;
-        path: string;
-      };
-      force_flush: {
-        state: "configured" | "missing" | "unknown";
-        path: string;
-      };
-    };
-    error: string;
-  };
-  reason: string;
-}
-
 export type UpdatePhase = "idle" | "checking" | "up_to_date" | "available"
   | "downloading" | "verifying" | "ready" | "installing" | "restart_pending"
   | "updated" | "rolled_back" | "error" | "managed_by_decky";
@@ -217,7 +163,6 @@ export interface Status {
   stripmine_priority_game_launches: CompanionPriority;
   stripmine_priority_customization: CompanionPriority;
   stripmine_priority_screen_sync: CompanionPriority;
-  stripmine_priority_witcher: CompanionPriority;
   weather_clear_day_variant: number;
   weather_clear_night_variant: number;
   weather_rain_variant: number;
@@ -260,7 +205,6 @@ export interface Status {
     queued: number;
     colors: RGB[];
   };
-  witcher: WitcherLabStatus;
   game: { appid: number; title: string };
   performance: {
     sample_age_s: number | null;

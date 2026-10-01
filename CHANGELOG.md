@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1-beta.1 - 2026-10-01 - local build only
+
+- Remove The Witcher 3 experimental Lab completely from the plugin, including
+  its Decky page, runtime provider, telemetry bridge, installer, diagnostics,
+  settings, tests and packaged assets.
+- Keep Screen Sync, four-controller layouts, Weather improvements and the
+  update-channel work from 1.2.0-beta.3.
+- Keep this beta local. No GitHub branch, tag, release or release asset has
+  been published for 1.2.1-beta.1.
+
 ## 1.2.0-beta.3 - 2026-09-30
 
 - Add an experimental The Witcher 3 HUD Lab for Steam AppID `292030`, with live

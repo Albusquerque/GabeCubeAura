@@ -1,4 +1,4 @@
-# Weather in GabeCubeAura 1.2.0-beta.3
+# Weather in GabeCubeAura 1.2.1-beta.1
 
 Choose a city in Settings, Weather, then select Weather as the permanent Home
 or in-game display. Location is never detected automatically. Current

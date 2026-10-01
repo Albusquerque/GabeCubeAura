@@ -23,7 +23,7 @@ class Arbiter:
                recording_marker_isolation=False, performance_always=False,
                controller_event=None, controller_base=None, weather_base=None,
                customization_base=None, screen_sync_base=None, screen_sync_fallback=None,
-               launch_artwork=None, steam_priority=False, witcher=None):
+               launch_artwork=None, steam_priority=False):
         if mode == "disabled":
             return ProviderOutput("none", None, "GabeCubeAura disabled")
         if steam_priority:
@@ -47,11 +47,6 @@ class Arbiter:
 
         if signal is not None and signal.frame is not None:
             return signal
-
-        # This is an explicit, game-scoped experimental base. It remains below
-        # Steam, alerts, launch animations and playtime countdowns.
-        if witcher is not None and witcher.frame is not None:
-            return witcher
 
         if weather_base is not None and weather_base.provider == "weather:preview" and weather_base.frame is not None:
             return self._with_recording_marker(weather_base, recording_marker, recording_marker_isolation)

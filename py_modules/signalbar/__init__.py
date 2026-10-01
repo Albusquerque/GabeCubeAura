@@ -1,3 +1,3 @@
 """GabeCubeAura backend package using the stable signalbar namespace."""
 
-__version__ = "1.2.0-beta.3"
+__version__ = "1.2.1-beta.1"

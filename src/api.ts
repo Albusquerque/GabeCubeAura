@@ -44,12 +44,6 @@ export const reportRuntimeDiagnostic = callable<[
 export const reportParentalMinutes = callable<[minutes: number], Status>("report_parental_minutes");
 export const startFreeTimer = callable<[minutes: number], Status>("start_free_timer");
 export const stopFreeTimer = callable<[], Status>("stop_free_timer");
-export const setWitcherLab = callable<[state: WitcherLabUpdate], Status>("set_witcher_lab");
-export const triggerWitcherSign = callable<[sign: WitcherSign], boolean>("trigger_witcher_sign");
-export const stopWitcherLab = callable<[], Status>("stop_witcher_lab");
-export const installWitcherTelemetryMod = callable<[], Status>("install_witcher_telemetry_mod");
-export const removeWitcherTelemetryMod = callable<[], Status>("remove_witcher_telemetry_mod");
-export const exportWitcherDiagnostics = callable<[], { path: string; generated_at: string }>("export_witcher_diagnostics");
 export const previewCountdown = callable<[], Status>("preview_countdown");
 export const triggerEvent = callable<[kind: string, preview: boolean, variant: string], boolean>("trigger_event");
 export const updateControllers = callable<[controllers: ControllerBatteryUpdate[], source: string], boolean>("update_controllers");
@@ -90,14 +84,4 @@ export interface ControllerBatteryUpdate {
   percent: number | null;
   level: number | null;
   charging: boolean | null;
-}
-
-export type WitcherSign = "aard" | "axii" | "igni" | "quen" | "yrden";
-export interface WitcherLabUpdate {
-  enabled?: boolean;
-  health?: number;
-  stamina?: number;
-  toxicity?: number;
-  adrenaline?: number;
-  combat?: boolean;
 }

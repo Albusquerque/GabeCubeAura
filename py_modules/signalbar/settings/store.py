@@ -122,7 +122,6 @@ DEFAULTS = {
     "stripmine_priority_game_launches": "signalbar",
     "stripmine_priority_customization": "stripmine",
     "stripmine_priority_screen_sync": "stripmine",
-    "stripmine_priority_witcher": "signalbar",
     "guard_cooldown_s": 5.0,
     "guard_stable_s": 2.0,
     "updates_auto_check": True,
@@ -298,7 +297,6 @@ class SettingsStore:
             "stripmine_priority_game_launches",
             "stripmine_priority_customization",
             "stripmine_priority_screen_sync",
-            "stripmine_priority_witcher",
         ):
             if self._data[key] not in VALID_COMPANION_PRIORITIES:
                 self._data[key] = DEFAULTS[key]

@@ -1,83 +1,19 @@
 # GabeCubeAura
 
-**GabeCubeAura 1.2.0-beta.3 adds an experimental The Witcher 3 Complete Edition
-HUD laboratory to real-time screen colours, richer night weather and fixed
-battery seats for the official Steam Machine's 17-pixel light bar.**
+**GabeCubeAura 1.2.1-beta.1 is a local beta focused on real-time screen colours,
+richer night weather and fixed battery seats for the official Steam Machine's
+17-pixel light bar. The experimental game telemetry Lab is not included.**
 
 Make your Steam Machine's 17-pixel light bar useful and a little more
 expressive. This beta combines the complete v1.1.3 feature set with live
 in-game colour, optional Steam screensaver matching and 8 night-weather
 transpositions. Existing GabeCubeAura and SignalBar settings remain compatible.
 
-> **Beta software:** 1.2.0-beta.3 is a public prerelease for testing. Keep a
-> configuration export and the current stable ZIP available for rollback.
+> **Beta software:** 1.2.1-beta.1 is a local test build. It has not been
+> published on GitHub. Keep a configuration export and the current stable ZIP
+> available for rollback.
 
-[Download GabeCubeAura 1.2.0-beta.3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip)
-· [Release notes](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.2.0-beta.3)
-· [Latest stable v1.1.3](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.3)
-
-## The Witcher 3 experimental HUD lab
-
-This feature is **experimental** and made specifically for The Witcher 3: Wild
-Hunt: Complete Edition / Remastered through Steam AppID `292030`. Open
-GabeCubeAura, then select **The Witcher 3 · experimental**. The
-optional companion WitcherScript mod sends live vitality, stamina, toxicity,
-adrenaline, combat state and Sign casts through a bounded state file in the
-game's Proton Documents folder. Its namespaced script log remains an
-independent diagnostic fallback. Manual HUD controls remain available when the
-game-side mod is missing or stale.
-
-![Experimental Witcher 3 HUD reacting on the physical Steam Machine light bar](docs/media/animations/witcher3-hud-exploration.gif)
-
-![Experimental Witcher 3 combat HUD and Sign reactions on the physical light bar](docs/media/animations/witcher3-hud-combat.gif)
-
-### Required Witcher 3 setup
-
-1. Install this beta and open **GabeCubeAura > The Witcher 3 · experimental**.
-2. Choose **Install telemetry mod**. The page must report **Installed and
-   verified**. Restart the game after every install or repair so WitcherScript
-   recompiles.
-3. In Steam, open **Library > The Witcher 3 > gear icon > Properties > General
-   > Launch Options** and enter exactly:
-
-   ```text
-   -net -debugscripts
-   ```
-
-4. Start the game and load a save. The bridge creates its telemetry state file
-   automatically. No manual edit of `dx12user.settings` or `user.settings` is
-   required for the primary transport.
-5. Reopen the Witcher page. It reports the two Steam launch flags, the optional
-   script-log fallback status, the installed script checksum, the live
-   transport and the current physical owner.
-
-Use **Install telemetry mod** at the top of the Witcher page to discover the
-AppID 292030 Steam library and install or repair the bundled script atomically
-in the required lower-case `mods` directory. The always-visible **Reset / remove
-gca_telemetry.ws** button checks both that path and the former upper-case
-`Mods` path; a pre-install backup is restored when present, and unknown
-modified content is preserved.
-The separately packaged companion archive remains available for manual install.
-The bridge first looks for
-`Documents/The Witcher 3/GabeCubeAuraTelemetry.ini`, then accepts only
-namespaced `GCA1` records from WitcherScript's bounded `scriptlog.txt` or
-`scriptslog.txt` fallback. The latter log transport has been observed working
-on the target Steam Machine. A matching installed file does not automatically
-claim the bar: the checksum-verified Lab arms itself when AppID
-292030 launches, but it emits no simulated HUD frame until the current game
-session produces a real `GCA1` telemetry record. Steam downloads, fixed red
-thermal/system warnings, launch effects, alerts and playtime countdowns retain
-priority, and the lab stops when the game exits. Full installation and rollback
-instructions are included in the ZIP.
-
-Use **Export Witcher + Screen Sync diagnostics** to write the recoverable
-`Documents/GabeCubeAura-Witcher3-diagnostics.json` file. It includes the
-installation paths and checksums, current transport and ownership decision,
-bounded relevant script-log lines, direct state-file contents, and recent
-GStreamer errors without copying unrelated game logs.
-
-This is a public beta, not a stable release. The latest stable release remains
-[GabeCubeAura v1.1.3](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.3).
+[Latest stable v1.1.3](https://github.com/Alyenax/GabeCubeAura/releases/tag/v1.1.3)
 
 ## Screen Sync
 
@@ -110,7 +46,8 @@ Home and games, then let
 temporary launch, playtime, and Steam moments take the stage before the
 selected display returns.
 
-[Download GabeCubeAura 1.2.0-beta.3](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip)
+The 1.2.1-beta.1 archive is built and installed locally. It has no public
+download link.
 
 GabeCubeAura is the new name of SignalBar. On first launch it imports existing
 SignalBar settings and artwork caches. Existing users keep their configuration.
@@ -305,8 +242,8 @@ GabeCubeAura follows a strict order:
    the alert.
 6. Game launches temporarily replace regular countdowns; those countdowns
    return afterwards.
-7. The Witcher 3 experimental HUD, Screen Sync, Artwork, Performance, Weather,
-   Controllers or Customization+ provides the selected permanent display.
+7. Screen Sync, Artwork, Performance, Weather, Controllers or Customization+
+   provides the selected permanent display.
 8. A single native transition is allowed to settle before GabeCubeAura restores its
    expected display. Repeated native writes keep control with Steam.
 
@@ -328,17 +265,16 @@ seconds, the previous plugin version is restored automatically.
 The Stable channel is the default and ignores GitHub prereleases. The optional
 Beta channel accepts published beta releases as well as later stable releases.
 Both use the same verification and confirmation flow. Changing the selector to
-**Beta** starts a fresh release check immediately, so 1.2.0-beta.3 can appear
-without waiting for the next automatic interval. Returning to Stable explicitly
+**Beta** starts a fresh release check immediately for published prereleases.
+This local 1.2.1-beta.1 build will not appear there. Returning to Stable explicitly
 offers the current stable package even when its version number is lower than an
 installed beta.
 
 ### Decky Loader
 
 1. Install [Decky Loader](https://decky.xyz/).
-2. Download
-   [`GabeCubeAura-v1.2.0-beta.3.zip`](https://github.com/Alyenax/GabeCubeAura/releases/download/v1.2.0-beta.3/GabeCubeAura-v1.2.0-beta.3.zip).
-   Do not extract it. The latest stable release remains v1.1.3.
+2. Build `out/GabeCubeAura-v1.2.1-beta.1.zip` locally. Do not extract it. The
+   latest public stable release remains v1.1.3.
 3. Open **Decky > Settings > General** and enable **Developer mode** only if the
    **Developer** section is not already visible.
 4. Open **Decky > Settings > Developer**. Under **Third-Party Plugins**, choose
@@ -457,9 +393,8 @@ exported JSON or the artwork cache; both stop a running personal timer.
 
 ## Safety and privacy
 
-- No cloud telemetry or cloud account login. The optional Witcher bridge writes
-  game-state records only inside the local Proton prefix. Weather city search
-  and Open-Meteo requests occur only when you use the optional Weather feature.
+- No cloud telemetry or cloud account login. Weather city search and Open-Meteo
+  requests occur only when you use the optional Weather feature.
 - No SteamOS read-only filesystem modification
 - Local read-only discovery of Steam and custom-grid artwork
 - Serialized and rate-limited hardware writes
@@ -476,9 +411,6 @@ own last verified write.
 - Screen Sync requires the SteamOS Gamescope PipeWire source, `pw-dump` and
   `gst-launch-1.0`. GabeCubeAura reports missing components and does not install
   system packages automatically.
-- The Witcher 3 Lab is experimental, supports only Steam AppID 292030, requires
-  the companion script plus `-net -debugscripts`, and yields whenever Steam or
-  a higher-priority GabeCubeAura signal owns the bar.
 - CPU and GPU sensors depend on paths exposed by the hardware and SteamOS build
 - Steam notifications and recording use private SteamClient callbacks that may
   change between Steam builds
@@ -500,17 +432,17 @@ corepack pnpm build
 corepack pnpm package
 ```
 
-The installable archives are written to `out/GabeCubeAura-v1.2.0-beta.3.zip` and
+The installable archives are written to `out/GabeCubeAura-v1.2.1-beta.1.zip` and
 `out/GabeCubeAura.zip`. Their identical SHA256 values are written to
 `out/SHA256SUMS`.
 
-See [the GabeCubeAura 1.2.0-beta.3 release notes](docs/RELEASE_NOTES_1.2.0-beta.3.md)
+See [the GabeCubeAura 1.2.1-beta.1 release notes](docs/RELEASE_NOTES_1.2.1-beta.1.md)
 for the complete beta scope and known limits.
 
 See [the Screen Sync implementation notes](docs/SCREEN_SYNC.md)
 for the implementation status, safety model and physical test checklist.
 
-See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.0-beta.3.md) before using
+See [the beta validation plan](docs/BETA_TEST_PLAN_1.2.1-beta.1.md) before using
 the build as a daily driver.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for provider, arbitration, guard, and
