@@ -9,6 +9,10 @@
   update-channel work from 1.2.0-beta.3.
 - Keep this beta local. No GitHub branch, tag, release or release asset has
   been published for 1.2.1-beta.1.
+- Add local compatibility for the standalone TW3 SteamRGB claim. Permanent
+  GabeCubeAura displays yield during its live Witcher HUD, while Steam system
+  priority, fixed red warnings, GabeCubeAura alerts, previews, launches and
+  countdowns remain above it.
 
 ## 1.2.0-beta.3 - 2026-09-30
 

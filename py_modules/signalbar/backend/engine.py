@@ -14,7 +14,7 @@ from signalbar import __version__
 from signalbar.activation import ScreenSyncActivation
 from signalbar.arbiter import Arbiter, VanillaGuard
 from signalbar.hardware import ValveLedHardware
-from signalbar.integration import LightEventLease, StripMineClaimReader
+from signalbar.integration import LightEventLease, StripMineClaimReader, Tw3SteamRgbClaimReader
 from signalbar.models import GameState
 from signalbar.providers import (
     ArtworkProvider, CountdownProvider, CustomizationProvider,
@@ -28,12 +28,13 @@ from signalbar.renderer import Renderer
 
 class Engine:
     def __init__(self, settings, cache_path, logger=None, hardware_factory=ValveLedHardware,
-                 event_lease=None, stripmine_claim=None):
+                 event_lease=None, stripmine_claim=None, tw3_steamrgb_claim=None):
         self.settings = settings
         self.log = logger
         self.hardware_factory = hardware_factory
         self.event_lease = event_lease or LightEventLease()
         self.stripmine_claim = stripmine_claim or StripMineClaimReader()
+        self.tw3_steamrgb_claim = tw3_steamrgb_claim or Tw3SteamRgbClaimReader()
         self._light_event_announced_at = 0.0
         self.artwork = ArtworkProvider(cache_path)
         self.launch_palette = ArtworkProvider(
@@ -707,6 +708,9 @@ class Engine:
                     values["stripmine_integration_enabled"]
                     and self.stripmine_claim.active()
                 )
+                tw3_steamrgb_active = bool(
+                    game.appid == 292030 and self.tw3_steamrgb_claim.active()
+                )
                 performance = self.performance.output(
                     metric=values["performance_metric"],
                     cool_c=values["cool_temp_c"],
@@ -836,6 +840,7 @@ class Engine:
                     recording_marker_isolation=values["recording_marker_isolation"],
                     performance_always=values["performance_always"],
                     steam_priority=steam_priority,
+                    companion_hud_active=tw3_steamrgb_active,
                 )
 
                 stripmine_priority = self._stripmine_priority(decision.provider, values)
@@ -984,6 +989,9 @@ class Engine:
         stripmine_detected = (
             values["stripmine_integration_enabled"]
             and self.stripmine_claim.active()
+        )
+        tw3_steamrgb_detected = bool(
+            self._game.appid == 292030 and self.tw3_steamrgb_claim.active()
         )
         sample = self.performance.sample
         art = self.artwork.status(values["launch_artwork_colour_count"])
@@ -1199,6 +1207,7 @@ class Engine:
                 "weather_shadow_cutoff": values["weather_shadow_cutoff"],
                 "stripmine_integration_enabled": values["stripmine_integration_enabled"],
                 "stripmine_detected": stripmine_detected,
+                "tw3_steamrgb_detected": tw3_steamrgb_detected,
                 "stripmine_priority_artwork": values["stripmine_priority_artwork"],
                 "stripmine_priority_performance": values["stripmine_priority_performance"],
                 "stripmine_priority_weather": values["stripmine_priority_weather"],

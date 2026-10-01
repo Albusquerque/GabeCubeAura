@@ -13,6 +13,8 @@ LEASE_ENV = "SIGNALBAR_LIGHT_EVENT_LEASE"
 DEFAULT_LIGHT_EVENT_LEASE = "/run/decky/signalbar-light-event.json"
 STRIPMINE_CLAIM_ENV = "STRIPMINE_LED_CLAIM"
 DEFAULT_STRIPMINE_CLAIM = "/run/decky/stripmine-led-claim.json"
+TW3_STEAMRGB_CLAIM_ENV = "TW3_STEAMRGB_LED_CLAIM"
+DEFAULT_TW3_STEAMRGB_CLAIM = "/run/decky/tw3-steamrgb-led-claim.json"
 
 
 class LightEventLease:
@@ -144,3 +146,29 @@ class StripMineClaimReader:
         except (OSError, ValueError, TypeError, AttributeError):
             pass
         self._claim = None
+
+
+class Tw3SteamRgbClaimReader:
+    """Accept only a fresh standalone TW3 SteamRGB HUD claim."""
+
+    def __init__(self, path=None, clock=time.time):
+        self.path = Path(
+            path or os.environ.get(TW3_STEAMRGB_CLAIM_ENV, DEFAULT_TW3_STEAMRGB_CLAIM)
+        )
+        self.clock = clock
+
+    def active(self):
+        try:
+            if self.path.stat().st_size > 4096:
+                return False
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            return (
+                data.get("protocol") == 1
+                and data.get("owner") == "TW3-SteamRGB"
+                and data.get("purpose") == "continuous-game-hud"
+                and isinstance(data.get("token"), str)
+                and bool(data.get("token"))
+                and float(data.get("expires_at", 0)) > self.clock()
+            )
+        except (OSError, ValueError, TypeError, OverflowError):
+            return False

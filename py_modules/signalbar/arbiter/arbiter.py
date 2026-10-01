@@ -23,7 +23,7 @@ class Arbiter:
                recording_marker_isolation=False, performance_always=False,
                controller_event=None, controller_base=None, weather_base=None,
                customization_base=None, screen_sync_base=None, screen_sync_fallback=None,
-               launch_artwork=None, steam_priority=False):
+               launch_artwork=None, steam_priority=False, companion_hud_active=False):
         if mode == "disabled":
             return ProviderOutput("none", None, "GabeCubeAura disabled")
         if steam_priority:
@@ -52,6 +52,12 @@ class Arbiter:
             return self._with_recording_marker(weather_base, recording_marker, recording_marker_isolation)
         if customization_base is not None and customization_base.provider == "customization:preview" and customization_base.frame is not None:
             return self._with_recording_marker(customization_base, recording_marker, recording_marker_isolation)
+
+        # TW3 SteamRGB owns the continuous in-game HUD only. GabeCubeAura's
+        # opted-in alerts, previews, launch animation and countdowns above
+        # retain priority, while every permanent base display yields here.
+        if companion_hud_active:
+            return ProviderOutput("none", None, "TW3 SteamRGB owns the permanent game HUD")
 
         # Screen Sync requested by Steam's screensaver temporarily replaces the
         # selected permanent Home display. Brief events and explicit previews
