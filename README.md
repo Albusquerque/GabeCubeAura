@@ -84,7 +84,7 @@ as if they were live.
 
 ![Animated mirrored CPU and GPU meter with changing load percentages, temperatures and colours](docs/media/animations/performance.gif)
 
-### Screen Sync
+### Real-time screen color sync
 
 Screen Sync maps the running game's picture onto the light bar in real time.
 Panorama maps 17 horizontal screen zones to the 17 LEDs. Ambient calculates one
