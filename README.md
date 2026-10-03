@@ -431,6 +431,12 @@ own last verified write.
 - No Internet artwork fallback, FPS, network, storage, Moonlight, or Sunshine
   provider yet
 
+## Support GabeCubeAura
+
+If GabeCubeAura makes your Steam Machine a little better, you can support its
+development on [Ko-fi](https://ko-fi.com/alyenax). The plugin and its public
+releases remain available to everyone.
+
 ## Build and test
 
 ```bash
